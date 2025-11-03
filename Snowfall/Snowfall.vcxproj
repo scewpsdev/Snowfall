@@ -163,7 +163,7 @@
     <ClCompile Include="src\renderer\Renderer2D.cpp" />
     <ClCompile Include="src\renderer\ScreenQuad.cpp" />
     <ClCompile Include="src\world\ChunkAllocator.cpp" />
-    <ClCompile Include="src\world\ChunkBuilder.cpp" />
+    <ClCompile Include="src\world\ChunkMesher.cpp" />
     <ClCompile Include="src\Resource.cpp" />
     <ClCompile Include="src\utils\Hash.cpp" />
     <ClCompile Include="src\utils\Simplex.cpp" />
@@ -197,7 +197,7 @@
     <ClInclude Include="src\utils\Hash.h" />
     <ClInclude Include="src\utils\List.h" />
     <ClInclude Include="src\world\ChunkAllocator.h" />
-    <ClInclude Include="src\world\ChunkBuilder.h" />
+    <ClInclude Include="src\world\ChunkMesher.h" />
     <ClInclude Include="src\utils\Random.h" />
     <ClInclude Include="src\utils\Simplex.h" />
     <ClInclude Include="src\utils\StringUtils.h" />

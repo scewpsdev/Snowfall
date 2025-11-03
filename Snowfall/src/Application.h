@@ -28,7 +28,7 @@
 
 #include "world/WorldGenerator.h"
 #include "world/Chunk.h"
-#include "world/ChunkBuilder.h"
+#include "world/ChunkMesher.h"
 #include "world/ChunkAllocator.h"
 
 
@@ -107,6 +107,9 @@ struct GameState
 
 	Chunk chunks[MAX_LOADED_CHUNKS];
 	int lastLoadedChunk;
+
+#define CHUNK_LOD_DISTANCE 16
+	Chunk* chunkGrid[(CHUNK_LOD_DISTANCE * 2) * (CHUNK_LOD_DISTANCE * 2)];
 
 	VertexBuffer* chunkVertexBuffer;
 	StorageBuffer* chunkStorageBuffer;

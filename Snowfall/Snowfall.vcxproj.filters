@@ -75,7 +75,7 @@
     <ClCompile Include="src\world\Chunk.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\world\ChunkBuilder.cpp">
+    <ClCompile Include="src\world\ChunkMesher.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\graphics\InstanceBuffer.cpp">
@@ -173,7 +173,7 @@
     <ClInclude Include="src\utils\Simplex.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\world\ChunkBuilder.h">
+    <ClInclude Include="src\world\ChunkMesher.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\graphics\InstanceBuffer.h">

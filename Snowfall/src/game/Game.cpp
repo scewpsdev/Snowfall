@@ -3,9 +3,6 @@
 #include "math/Vector.h"
 
 
-#define CHUNK_LOD_DISTANCE 16
-
-
 struct ChunkUniforms
 {
 	Matrix pv;
@@ -20,6 +17,13 @@ static void InitChunk(Chunk* chunk, int id, const ivec3& position, int lod)
 	chunk->isLoaded = true;
 	if (chunk->id > game->lastLoadedChunk)
 		game->lastLoadedChunk = chunk->id;
+
+	if (lod == 0)
+	{
+		int x = position.x / (CHUNK_SIZE * ipow(2, lod));
+		int z = position.z / (CHUNK_SIZE * ipow(2, lod));
+		game->chunkGrid[(x + CHUNK_LOD_DISTANCE) + (z + CHUNK_LOD_DISTANCE) * (2 * CHUNK_LOD_DISTANCE)] = chunk;
+	}
 }
 
 static Chunk* GetAvailableChunk(int* chunkID)
@@ -65,7 +69,6 @@ void GameInit()
 			GenerateChunk(&game->worldGenerator, chunk);
 		}
 	}
-	/*
 	for (int z = -CHUNK_LOD_DISTANCE; z < CHUNK_LOD_DISTANCE; z++)
 	{
 		for (int x = -CHUNK_LOD_DISTANCE; x < CHUNK_LOD_DISTANCE; x++)
@@ -112,7 +115,52 @@ void GameInit()
 			}
 		}
 	}
-	*/
+	for (int z = -CHUNK_LOD_DISTANCE; z < CHUNK_LOD_DISTANCE; z++)
+	{
+		for (int x = -CHUNK_LOD_DISTANCE; x < CHUNK_LOD_DISTANCE; x++)
+		{
+			int y = 0;
+
+			int lod = 3;
+			int chunkSize = ipow(2, lod);
+
+			int xx = x * chunkSize;
+			int yy = y * chunkSize;
+			int zz = z * chunkSize;
+
+			if (!(xx >= -CHUNK_LOD_DISTANCE * 4 && xx < CHUNK_LOD_DISTANCE * 4 && zz >= -CHUNK_LOD_DISTANCE * 4 && zz < CHUNK_LOD_DISTANCE * 4))
+			{
+				int chunkID;
+				Chunk* chunk = GetAvailableChunk(&chunkID);
+				ivec3 position = ivec3(xx, yy, zz) * CHUNK_SIZE;
+				InitChunk(chunk, chunkID, position, lod);
+				GenerateChunk(&game->worldGenerator, chunk);
+			}
+		}
+	}
+	for (int z = -CHUNK_LOD_DISTANCE; z < CHUNK_LOD_DISTANCE; z++)
+	{
+		for (int x = -CHUNK_LOD_DISTANCE; x < CHUNK_LOD_DISTANCE; x++)
+		{
+			int y = 0;
+
+			int lod = 4;
+			int chunkSize = ipow(2, lod);
+
+			int xx = x * chunkSize;
+			int yy = y * chunkSize;
+			int zz = z * chunkSize;
+
+			if (!(xx >= -CHUNK_LOD_DISTANCE * 8 && xx < CHUNK_LOD_DISTANCE * 8 && zz >= -CHUNK_LOD_DISTANCE * 8 && zz < CHUNK_LOD_DISTANCE * 8))
+			{
+				int chunkID;
+				Chunk* chunk = GetAvailableChunk(&chunkID);
+				ivec3 position = ivec3(xx, yy, zz) * CHUNK_SIZE;
+				InitChunk(chunk, chunkID, position, lod);
+				GenerateChunk(&game->worldGenerator, chunk);
+			}
+		}
+	}
 
 	/*
 	for (int i = 0; i < MAX_LOADED_CHUNKS; i++)
@@ -127,7 +175,7 @@ void GameInit()
 	}
 	*/
 
-	game->cameraPosition = vec3(40, 150, 40);
+	game->cameraPosition = vec3(40, 100, 40);
 	game->cameraPitch = -0.25f * PI;
 	game->cameraYaw = 0.25f * PI;
 
@@ -160,7 +208,7 @@ void GameUpdate()
 	}
 
 
-	for (int i = 0; i < game->lastLoadedChunk; i++)
+	for (int i = 0; i <= game->lastLoadedChunk; i++)
 	{
 		Chunk* chunk = &game->chunks[i];
 		if (chunk->isLoaded && chunk->needsUpdate)
@@ -243,7 +291,7 @@ static int UpdateDrawBuffers(vec4 frustumPlanes[6])
 	Chunk** chunkDrawList = (Chunk**)BumpAllocatorCalloc(&memory->transientAllocator, game->lastLoadedChunk + 1, sizeof(Chunk*));
 	int numDrawChunks = 0;
 
-	for (int i = 0; i < game->lastLoadedChunk; i++)
+	for (int i = 0; i <= game->lastLoadedChunk; i++)
 	{
 		Chunk* chunk = &game->chunks[i];
 		if (chunk->isLoaded && chunk->hasMesh)
@@ -351,7 +399,7 @@ static int UpdateDrawBuffers(vec4 frustumPlanes[6])
 
 void GameRender()
 {
-	Matrix projection = Matrix::Perspective(60 * Deg2Rad, width / (float)height, 1, 2000);
+	Matrix projection = Matrix::Perspective(60 * Deg2Rad, width / (float)height, 1, 8000);
 	Matrix view = Matrix::Rotate(game->cameraRotation.conjugated()) * Matrix::Translate(-game->cameraPosition);
 	Matrix pv = projection * view;
 
