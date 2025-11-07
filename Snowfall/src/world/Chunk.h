@@ -28,15 +28,22 @@ struct Chunk
 	int id;
 	ivec3 position;
 	int lod;
+	int chunkScale;
 
 	bool isLoaded;
 	bool hasMesh;
+	bool isEmpty;
 	//VertexBuffer* vertexBuffer;
 	//IndexBuffer* indexBuffer;
 	bool needsUpdate;
 
 	int vertexOffsets[6];
 	int vertexCounts[6];
+
+	inline int getTotalVertexCount() const
+	{
+		return vertexCounts[0] + vertexCounts[1] + vertexCounts[2] + vertexCounts[3] + vertexCounts[4] + vertexCounts[5];
+	}
 
 	//int vertexBufferOffset;
 	//int numVertices;

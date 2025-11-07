@@ -6,24 +6,6 @@
 #include <float.h>
 
 
-int ipow(int base, int exp)
-{
-	if (!exp)
-		return 1;
-	int result = 1;
-	for (;;)
-	{
-		if (exp & 1)
-			result *= base;
-		exp >>= 1;
-		if (!exp)
-			break;
-		base *= base;
-	}
-
-	return result;
-}
-
 int fsign(float f)
 {
 	return f < 0.0f ? -1 : f > 0.0f ? 1 : 0;

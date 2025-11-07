@@ -137,6 +137,7 @@ extern "C" __declspec(dllexport) void AppIterate(GameMemory* memory, AppState* a
 		MemoryString(transientMemoryUsageStr, 16, transientMemoryUsage);
 
 		SDL_Log("%d fps, %.3f ms | %s, %s | chunks: %d, rendered: %d, vertices: %d", fps, avgMs, memoryUsageStr, transientMemoryUsageStr, game->numLoadedChunks, game->numRenderedChunks, game->numRenderedVertices);
+		SDL_Log("%d, %d, %d", (int)floorf(game->cameraPosition.x), (int)floorf(game->cameraPosition.y), (int)floorf(game->cameraPosition.z));
 
 		memoryUsage = 0;
 		transientMemoryUsage = 0;

@@ -129,6 +129,10 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(ProjectDir)lib\include\;$(ProjectDir)src\;D:\Repositories\SDL3-3.3.2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -172,6 +176,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Application.h" />
+    <ClInclude Include="src\game\Game.h" />
     <ClInclude Include="src\graphics\GraphicsPipeline.h" />
     <ClInclude Include="src\graphics\IndexBuffer.h" />
     <ClInclude Include="src\graphics\IndirectBuffer.h" />
@@ -196,6 +201,7 @@
     <ClInclude Include="src\math\Vector.h" />
     <ClInclude Include="src\utils\Hash.h" />
     <ClInclude Include="src\utils\List.h" />
+    <ClInclude Include="src\utils\uint128_t.h" />
     <ClInclude Include="src\world\ChunkAllocator.h" />
     <ClInclude Include="src\world\ChunkMesher.h" />
     <ClInclude Include="src\utils\Random.h" />

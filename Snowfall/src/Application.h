@@ -91,6 +91,15 @@ struct GraphicsState
 	int numGraphicsPipelines;
 };
 
+struct ChunkLODLevel
+{
+#define CHUNK_LOD_DISTANCE 16
+	Chunk* chunkGrid[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
+#define CHUNK_FLAG_EMPTY (1 << 0)
+#define CHUNK_FLAG_SOLID (1 << 1)
+	uint8_t chunkFlags[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
+};
+
 struct GameState
 {
 	Shader* chunkShader;
@@ -106,16 +115,16 @@ struct GameState
 	ChunkAllocator chunkAllocator;
 
 	Chunk chunks[MAX_LOADED_CHUNKS];
+	int numLoadedChunks;
 	int lastLoadedChunk;
 
-#define CHUNK_LOD_DISTANCE 16
-	Chunk* chunkGrid[(CHUNK_LOD_DISTANCE * 2) * (CHUNK_LOD_DISTANCE * 2)];
+#define NUM_CHUNK_LOD_LEVELS 6
+	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
 	VertexBuffer* chunkVertexBuffer;
 	StorageBuffer* chunkStorageBuffer;
 	IndirectBuffer* chunkDrawBuffer;
 
-	int numLoadedChunks;
 	int numRenderedChunks;
 	int numRenderedVertices;
 };

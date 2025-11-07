@@ -17,7 +17,33 @@ struct AABB
 };
 
 
-int ipow(int base, int exp);
+inline int ipow(int base, int exp)
+{
+	if (!exp)
+		return 1;
+	int result = 1;
+	for (;;)
+	{
+		if (exp & 1)
+			result *= base;
+		exp >>= 1;
+		if (!exp)
+			break;
+		base *= base;
+	}
+
+	return result;
+}
+
+inline int idivfloor(int a, int b)
+{
+	int q = a / b;
+	int r = a % b;
+	// If remainder != 0 and signs differ, round down
+	if ((r != 0) && ((a ^ b) < 0))
+		q -= 1;
+	return q;
+}
 
 int fsign(float f);
 

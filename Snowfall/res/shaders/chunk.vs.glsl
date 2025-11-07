@@ -75,11 +75,12 @@ uint hash(uint x)
 
 vec3 getColorFromID(uint id)
 {
-	uint rgba = hash(id);
-	uint r = rgba & 0xFF;
-	uint g = (rgba & 0xFF00) >> 8;
-	uint b = (rgba & 0xFF0000) >> 16;
-	return vec3(r / 255.0, g / 255.0, b / 255.0);
+	return vec3(0.3, 0.3, 0.3);
+	//uint rgba = hash(id);
+	//uint r = rgba & 0xFF;
+	//uint g = (rgba & 0xFF00) >> 8;
+	//uint b = (rgba & 0xFF0000) >> 16;
+	//return vec3(r / 255.0, g / 255.0, b / 255.0);
 }
 
 void main()

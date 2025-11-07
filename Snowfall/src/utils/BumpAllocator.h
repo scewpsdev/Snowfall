@@ -20,9 +20,9 @@ inline void InitBumpAllocator(BumpAllocator* allocator, uint8_t* buffer, uint64_
 
 inline void ResetBumpAllocator(BumpAllocator* allocator)
 {
-#if _DEBUG
-	SDL_memset4(allocator->buffer, 0, (allocator->offset + 3) / 4);
-#endif
+//#if _DEBUG
+//	SDL_memset4(allocator->buffer, 0, (allocator->offset + 3) / 4);
+//#endif
 	allocator->offset = 0;
 }
 

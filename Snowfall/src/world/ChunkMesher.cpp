@@ -2,6 +2,8 @@
 
 #include "Application.h"
 
+#include "game/Game.h"
+
 #include "graphics/VertexBuffer.h"
 #include "graphics/IndexBuffer.h"
 
@@ -74,94 +76,15 @@ static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirecti
 	return data;
 }
 
-/*
-void ChunkBuilderAddMesh(ChunkMesher* mesher, int numVertices, const ivec3* vertices, int numIndices, const int* indices, ivec3 position, int faceDirection, int colorID)
-{
-	SDL_assert(false);
-
-	if (mesher->numVertices + numVertices > mesher->vertexCapacity)
-		ResizeVertices(builder, mesher->numVertices + numVertices);
-	if (mesher->numIndices + numIndices > mesher->indexCapacity)
-		ResizeIndices(builder, mesher->numIndices + numIndices);
-
-	int indexOffset = mesher->numVertices;
-
-	for (int i = 0; i < numVertices; i++)
-	{
-		//uint32_t data = EncodeVertexData(position/* + vertices[i]*, faceDirection, colorID);
-		//mesher->vertexData[mesher->numVertices + i] = data;
-	}
-	mesher->numVertices += numVertices;
-
-	for (int i = 0; i < numIndices; i++)
-		mesher->indexData[mesher->numIndices + i] = indexOffset + indices[i];
-	mesher->numIndices += numIndices;
-}
-*/
-
 static void ChunkBuilderAddFace(ChunkMesher* mesher, ivec3 position, int sx, int sy, int faceDirection, int colorID)
 {
-	//const int numVertices = 3;
-	//const int numIndices = 6;
-	//
-	//const int indices[] = {
-	//	0, 1, 2, 2, 1, 3
-	//};
-
 	SDL_assert(mesher->numVertices + 3 <= mesher->vertexCapacity);
-	//SDL_assert(mesher->numIndices + numIndices <= mesher->indexCapacity);
-
-	//int indexOffset = mesher->numVertices;
 
 	uint32_t data = EncodeVertexData(position /*+ vertices[faceDirection * 3 + i]*/, sx, sy, faceDirection, colorID);
 	mesher->vertexData[mesher->numVertices + 0] = data;
 	mesher->vertexData[mesher->numVertices + 1] = data;
 	mesher->vertexData[mesher->numVertices + 2] = data;
 	mesher->numVertices += 3;
-
-	//for (int i = 0; i < numIndices; i++)
-	//	mesher->indexData[mesher->numIndices + i] = indexOffset + indices[i];
-	//mesher->numIndices += numIndices;
-}
-
-static Chunk* GetChunkAtWorldPos(ivec3 position, GameState* game)
-{
-	int x = (int)floorf(position.x / (float)CHUNK_SIZE);
-	int z = (int)floorf(position.z / (float)CHUNK_SIZE);
-	int y = (int)floorf(position.y / (float)CHUNK_SIZE);
-	if (x >= -CHUNK_LOD_DISTANCE && x < CHUNK_LOD_DISTANCE && z >= -CHUNK_LOD_DISTANCE && z < CHUNK_LOD_DISTANCE && y == 0)
-	{
-		Chunk* chunk = game->chunkGrid[(x + CHUNK_LOD_DISTANCE) + (z + CHUNK_LOD_DISTANCE) * (2 * CHUNK_LOD_DISTANCE)];
-		SDL_assert(chunk->isLoaded
-			&& position.x >= chunk->position.x && position.x < chunk->position.x + CHUNK_SIZE * ipow(2, chunk->lod)
-			&& position.y >= chunk->position.y && position.y < chunk->position.y + CHUNK_SIZE * ipow(2, chunk->lod)
-			&& position.z >= chunk->position.z && position.z < chunk->position.z + CHUNK_SIZE * ipow(2, chunk->lod));
-		return chunk;
-	}
-	return nullptr;
-
-	for (int i = 0; i <= game->lastLoadedChunk; i++)
-	{
-		Chunk* chunk = &game->chunks[i];
-		if (chunk->isLoaded
-			&& position.x >= chunk->position.x && position.x < chunk->position.x + CHUNK_SIZE * ipow(2, chunk->lod)
-			&& position.y >= chunk->position.y && position.y < chunk->position.y + CHUNK_SIZE * ipow(2, chunk->lod)
-			&& position.z >= chunk->position.z && position.z < chunk->position.z + CHUNK_SIZE * ipow(2, chunk->lod))
-		{
-			return chunk;
-		}
-	}
-	return nullptr;
-}
-
-static BlockData* GetBlockAtWorldPos(ivec3 position, GameState* game)
-{
-	if (Chunk* chunk = GetChunkAtWorldPos(position, game))
-	{
-		ivec3 localpos = (position - chunk->position) / ipow(2, chunk->lod);
-		return chunk->getBlockData(localpos.x, localpos.y, localpos.z);
-	}
-	return nullptr;
 }
 
 static void GetFaceSize(int x, int y, bool slice[CHUNK_SIZE * CHUNK_SIZE], int* sx, int* sy)
@@ -207,10 +130,22 @@ static void GetFaceSize(int x, int y, bool slice[CHUNK_SIZE * CHUNK_SIZE], int* 
 
 static uint32_t TrailingZeros(uint32_t value)
 {
-	unsigned long result = 0;
-	if (_BitScanForward(&result, value))
-		return result;
-	return 32u;
+	//unsigned long result = 0;
+	//if (_BitScanForward(&result, value))
+	//	return result;
+	//return 32u;
+
+	// https://stackoverflow.com/questions/7812044/finding-trailing-0s-in-a-binary-number
+	unsigned int v = value;      // 32-bit word input to count zero bits on right
+	unsigned int c = 32; // c will be the number of zero bits on the right
+	v &= -(signed int)v;
+	if (v) c--;
+	if (v & 0x0000FFFF) c -= 16;
+	if (v & 0x00FF00FF) c -= 8;
+	if (v & 0x0F0F0F0F) c -= 4;
+	if (v & 0x33333333) c -= 2;
+	if (v & 0x55555555) c -= 1;
+	return c;
 }
 
 static uint32_t TrailingOnes(uint32_t value)
@@ -221,21 +156,21 @@ static uint32_t TrailingOnes(uint32_t value)
 static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocator, GameState* game)
 {
 #define CHUNK_SIZE_P (CHUNK_SIZE + 2)
-	uint64_t binaryGrid[CHUNK_SIZE_P * CHUNK_SIZE_P * 3];
+	uint64_t* binaryGrid = (uint64_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE_P * CHUNK_SIZE_P * 3, sizeof(uint64_t));
 
-	uint64_t faceMasks[CHUNK_SIZE_P * CHUNK_SIZE_P * 6];
+	uint64_t* faceMasks = (uint64_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE_P * CHUNK_SIZE_P * 6, sizeof(uint64_t));
 
-	uint32_t slicesXY[CHUNK_SIZE * CHUNK_SIZE * 2];
-	uint32_t slicesZY[CHUNK_SIZE * CHUNK_SIZE * 2];
-	uint32_t slicesXZ[CHUNK_SIZE * CHUNK_SIZE * 2];
+	uint32_t* slicesXY = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE * CHUNK_SIZE * 2, sizeof(uint32_t));
+	uint32_t* slicesZY = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE * CHUNK_SIZE * 2, sizeof(uint32_t));
+	uint32_t* slicesXZ = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE * CHUNK_SIZE * 2, sizeof(uint32_t));
 
-	SDL_memset(binaryGrid, 0, sizeof(binaryGrid));
+	//SDL_memset(binaryGrid, 0, sizeof(binaryGrid));
 
-	SDL_memset(faceMasks, 0, sizeof(faceMasks));
+	//SDL_memset(faceMasks, 0, sizeof(faceMasks));
 
-	SDL_memset(slicesXY, 0, sizeof(slicesXY));
-	SDL_memset(slicesZY, 0, sizeof(slicesZY));
-	SDL_memset(slicesXZ, 0, sizeof(slicesXZ));
+	//SDL_memset(slicesXY, 0, sizeof(slicesXY));
+	//SDL_memset(slicesZY, 0, sizeof(slicesZY));
+	//SDL_memset(slicesXZ, 0, sizeof(slicesXZ));
 
 	// build axis bit fields
 	for (int z = 0; z < CHUNK_SIZE_P; z++)
@@ -245,8 +180,9 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 			for (int x = 0; x < CHUNK_SIZE_P; x++)
 			{
 				BlockData* block = chunk->getBlockData(x - 1, y - 1, z - 1);
-				if (!block) block = GetBlockAtWorldPos(chunk->position + ivec3(x - 1, y - 1, z - 1), game);
-				if (block && block->id > 0)
+				bool solid = block && block->id;
+				if (!block) solid = GetSolidAtWorldPos(chunk->position + ivec3(x - 1, y - 1, z - 1) * chunk->chunkScale, chunk->lod, game);
+				if (solid)
 				{
 					binaryGrid[y * CHUNK_SIZE_P + x + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << z;
 					binaryGrid[y * CHUNK_SIZE_P + z + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << x;
@@ -257,11 +193,11 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 	}
 
 	// binary face culling
-	for (int i = 0; i < CHUNK_SIZE_P; i++)
+	for (int axis = 0; axis < 3; axis++)
 	{
-		for (int j = 0; j < CHUNK_SIZE_P; j++)
+		for (int i = 0; i < CHUNK_SIZE_P; i++)
 		{
-			for (int axis = 0; axis < 3; axis++)
+			for (int j = 0; j < CHUNK_SIZE_P; j++)
 			{
 				uint64_t column = binaryGrid[i * CHUNK_SIZE_P + j + axis * CHUNK_SIZE_P * CHUNK_SIZE_P];
 				faceMasks[i * CHUNK_SIZE_P + j + (axis * 2 + 0) * CHUNK_SIZE_P * CHUNK_SIZE_P] = column & ~(column << 1); // i- face
@@ -604,86 +540,6 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 	chunk->vertexCounts[5] = mesher->numVertices - chunk->vertexOffsets[5];
 }
 
-static void BuildGreedyFaces(ChunkMesher* mesher, int faceDirection, Chunk* chunk, ChunkAllocator* allocator, GameState* game)
-{
-	const int axis = faceDirection / 2;
-	const int sgn = faceDirection % 2;
-
-	for (int z = 0; z < CHUNK_SIZE; z++)
-	{
-		bool sliceBits[CHUNK_SIZE * CHUNK_SIZE];
-		SDL_memset(sliceBits, 0, sizeof(sliceBits));
-
-		for (int x = 0; x < CHUNK_SIZE; x++)
-		{
-			for (int y = 0; y < CHUNK_SIZE; y++)
-			{
-				ivec3 position = ivec3(x, y, z);
-				ivec3 direction = ivec3(0, 0, 1);
-
-				if (axis == 0)
-				{
-					position = ivec3(position.z, position.y, position.x);
-					direction = ivec3(direction.z, direction.y, direction.x);
-				}
-				else if (axis == 1)
-				{
-					position = ivec3(position.x, position.z, position.y);
-					direction = ivec3(direction.x, direction.z, direction.y);
-				}
-
-				if (sgn == 0)
-					direction = -direction;
-
-				BlockData* block = chunk->getBlockData(position);
-
-				if (block->id > 0)
-				{
-					BlockData* next = chunk->getBlockData(position + direction);
-					if (!next) next = GetBlockAtWorldPos(chunk->position + position + direction, game);
-
-					if (!next || !next->id)
-					{
-						//sliceBits[j] |= 1 << y;
-						sliceBits[y + x * CHUNK_SIZE] = true;
-					}
-				}
-			}
-		}
-
-		for (int x = 0; x < CHUNK_SIZE; x++)
-		{
-			for (int y = 0; y < CHUNK_SIZE; y++)
-			{
-				if (sliceBits[y + x * CHUNK_SIZE])
-				{
-					int sx = 0, sy = 0;
-					GetFaceSize(x, y, sliceBits, &sx, &sy);
-
-					for (int yy = 0; yy < sy; yy++)
-					{
-						for (int xx = 0; xx < sx; xx++)
-						{
-							sliceBits[(y + yy) + (x + xx) * CHUNK_SIZE] = false;
-						}
-					}
-
-					ivec3 position = ivec3(x, y, z);
-
-					if (axis == 0)
-						position = ivec3(position.z, position.y, position.x);
-					else if (axis == 1)
-						position = ivec3(position.x, position.z, position.y);
-
-					ChunkBuilderAddFace(mesher, position, sx, sy, faceDirection, chunk->getBlockData(position)->id);
-
-					y += sy - 1;
-				}
-			}
-		}
-	}
-}
-
 void ChunkBuilderRun(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocator, GameState* game)
 {
 	SDL_assert(chunk->isLoaded);
@@ -702,17 +558,16 @@ void ChunkBuilderRun(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocato
 	InitChunkBuilder(mesher, CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 6 * 4 / 2); // we divide by 2 since in the worst case scenario only every 2nd block is solid
 
 	uint64_t beforeMeshing = SDL_GetTicksNS();
-	for (int i = 0; i < 0; i++)
-	{
-		chunk->vertexOffsets[i] = mesher->numVertices;
-		BuildGreedyFaces(mesher, i, chunk, allocator, game);
-		chunk->vertexCounts[i] = mesher->numVertices - chunk->vertexOffsets[i];
-	}
+
+	//chunk->vertexOffset = 0;
+	//for (int i = 0; i < 6; i++)
+	//	BuildGreedyFaces(mesher, i, chunk, allocator, game);
+	//chunk->vertexCount = mesher->numVertices;
 
 	GreedyMesh(mesher, chunk, allocator, game);
 
 	uint64_t afterMeshing = SDL_GetTicksNS();
-	SDL_Log("meshing %.2f ms", (afterMeshing - beforeMeshing) / 1e6f);
+	//SDL_Log("meshing %.2f ms", (afterMeshing - beforeMeshing) / 1e6f);
 
 	/*
 	for (int i = 0; i < CHUNK_SIZE; i++)
@@ -760,16 +615,19 @@ void ChunkBuilderRun(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocato
 	}
 	*/
 
-	SDL_assert(mesher->numVertices <= CHUNK_VERTEX_BUFFER_SIZE);
-	int offset = AllocateChunk(allocator, mesher->numVertices);
+	if (mesher->numVertices > 0)
+	{
+		SDL_assert(mesher->numVertices <= CHUNK_VERTEX_BUFFER_SIZE);
+		int offset = AllocateChunk(allocator, mesher->numVertices);
 
-	for (int i = 0; i < 6; i++)
-		chunk->vertexOffsets[i] += offset;
+		for (int i = 0; i < 6; i++)
+			chunk->vertexOffsets[i] += offset;
 
-	//chunk->vertexBufferOffset = offset;
-	//chunk->numVertices = mesher->numVertices;
+		//chunk->vertexBufferOffset = offset;
+		//chunk->numVertices = mesher->numVertices;
 
-	UpdateVertexBuffer(allocator->vertexBuffer, chunk->vertexOffsets[0] * sizeof(uint32_t), (uint8_t*)mesher->vertexData, mesher->numVertices * sizeof(uint32_t), cmdBuffer);
+		UpdateVertexBuffer(allocator->vertexBuffer, chunk->vertexOffsets[0] * sizeof(uint32_t), (uint8_t*)mesher->vertexData, mesher->numVertices * sizeof(uint32_t), cmdBuffer);
+	}
 
 	//ChunkBuilderCreateBuffers(builder, &chunk->instanceBuffer);
 	//ChunkBuilderCreateBuffers(builder, &chunk->vertexBuffer, &chunk->indexBuffer);

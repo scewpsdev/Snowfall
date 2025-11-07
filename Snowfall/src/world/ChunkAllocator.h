@@ -3,7 +3,7 @@
 #include "graphics/VertexBuffer.h"
 
 
-#define MAX_LOADED_CHUNKS 4096
+#define MAX_LOADED_CHUNKS 8192
 
 
 struct ChunkAllocation
@@ -19,8 +19,6 @@ struct ChunkAllocator
 	int maxVertices;
 	VertexBuffer* vertexBuffer;
 
-	int numAllocations;
-	ChunkAllocation allocations[MAX_LOADED_CHUNKS];
 	ChunkAllocation* first;
 };
 
@@ -28,3 +26,4 @@ struct ChunkAllocator
 void InitChunkAllocator(ChunkAllocator* allocator, VertexBuffer* vertexBuffer, int maxVertices);
 
 int AllocateChunk(ChunkAllocator* allocator, int vertexCount);
+void DeallocateChunk(ChunkAllocator* allocator, int offset, int count);
