@@ -24,6 +24,7 @@ struct ChunkData
 struct Chunk
 {
 	BlockData blocks[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+	bool isEmpty;
 
 	int id;
 	ivec3 position;
@@ -32,7 +33,6 @@ struct Chunk
 
 	bool isLoaded;
 	bool hasMesh;
-	bool isEmpty;
 	//VertexBuffer* vertexBuffer;
 	//IndexBuffer* indexBuffer;
 	bool needsUpdate;
@@ -47,6 +47,9 @@ struct Chunk
 
 	//int vertexBufferOffset;
 	//int numVertices;
+
+	inline const BlockData* getBlockData(int x, int y, int z) const { return (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) ? &blocks[x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE] : nullptr; }
+	inline const BlockData* getBlockData(ivec3 position) const { return getBlockData(position.x, position.y, position.z); }
 
 	inline BlockData* getBlockData(int x, int y, int z) { return (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) ? &blocks[x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE] : nullptr; }
 	inline BlockData* getBlockData(ivec3 position) { return getBlockData(position.x, position.y, position.z); }

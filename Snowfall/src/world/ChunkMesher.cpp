@@ -46,11 +46,11 @@ extern GameMemory* memory;
 extern SDL_GPUCommandBuffer* cmdBuffer;
 
 
-void InitChunkBuilder(ChunkMesher* mesher, int vertexCapacity)
+void InitChunkMesher(ChunkMesher* mesher)
 {
-	mesher->vertexData = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, vertexCapacity, sizeof(uint32_t));
-	mesher->numVertices = 0;
-	mesher->vertexCapacity = vertexCapacity;
+	//mesher->vertexData = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, vertexCapacity, sizeof(uint32_t));
+	//mesher->numVertices = 0;
+	//mesher->vertexCapacity = vertexCapacity;
 }
 
 static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirection, int colorID)
@@ -78,7 +78,7 @@ static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirecti
 
 static void ChunkBuilderAddFace(ChunkMesher* mesher, ivec3 position, int sx, int sy, int faceDirection, int colorID)
 {
-	SDL_assert(mesher->numVertices + 3 <= mesher->vertexCapacity);
+	SDL_assert(mesher->numVertices + 3 <= CHUNK_MESHER_VERTEX_CAPACITY);
 
 	uint32_t data = EncodeVertexData(position /*+ vertices[faceDirection * 3 + i]*/, sx, sy, faceDirection, colorID);
 	mesher->vertexData[mesher->numVertices + 0] = data;
@@ -153,24 +153,23 @@ static uint32_t TrailingOnes(uint32_t value)
 	return TrailingZeros(~value);
 }
 
-static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocator, GameState* game)
+static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 {
-#define CHUNK_SIZE_P (CHUNK_SIZE + 2)
-	uint64_t* binaryGrid = (uint64_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE_P * CHUNK_SIZE_P * 3, sizeof(uint64_t));
+	uint64_t* binaryGrid = mesher->binaryGrid;
 
-	uint64_t* faceMasks = (uint64_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE_P * CHUNK_SIZE_P * 6, sizeof(uint64_t));
+	uint64_t* faceMasks = mesher->faceMasks;
 
-	uint32_t* slicesXY = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE * CHUNK_SIZE * 2, sizeof(uint32_t));
-	uint32_t* slicesZY = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE * CHUNK_SIZE * 2, sizeof(uint32_t));
-	uint32_t* slicesXZ = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, CHUNK_SIZE * CHUNK_SIZE * 2, sizeof(uint32_t));
+	uint32_t* slicesXY = mesher->slicesXY;
+	uint32_t* slicesZY = mesher->slicesZY;
+	uint32_t* slicesXZ = mesher->slicesXZ;
 
-	//SDL_memset(binaryGrid, 0, sizeof(binaryGrid));
+	SDL_memset(binaryGrid, 0, sizeof(mesher->binaryGrid));
 
-	//SDL_memset(faceMasks, 0, sizeof(faceMasks));
+	SDL_memset(faceMasks, 0, sizeof(mesher->faceMasks));
 
-	//SDL_memset(slicesXY, 0, sizeof(slicesXY));
-	//SDL_memset(slicesZY, 0, sizeof(slicesZY));
-	//SDL_memset(slicesXZ, 0, sizeof(slicesXZ));
+	SDL_memset(slicesXY, 0, sizeof(mesher->slicesXY));
+	SDL_memset(slicesZY, 0, sizeof(mesher->slicesZY));
+	SDL_memset(slicesXZ, 0, sizeof(mesher->slicesXZ));
 
 	// build axis bit fields
 	for (int z = 0; z < CHUNK_SIZE_P; z++)
@@ -179,7 +178,7 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 		{
 			for (int x = 0; x < CHUNK_SIZE_P; x++)
 			{
-				BlockData* block = chunk->getBlockData(x - 1, y - 1, z - 1);
+				const BlockData* block = chunk->getBlockData(x - 1, y - 1, z - 1);
 				bool solid = block && block->id;
 				if (!block) solid = GetSolidAtWorldPos(chunk->position + ivec3(x - 1, y - 1, z - 1) * chunk->chunkScale, chunk->lod, game);
 				if (solid)
@@ -305,7 +304,7 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 	}
 
 	// face generation
-	chunk->vertexOffsets[0] = mesher->numVertices;
+	mesher->vertexOffsets[0] = mesher->numVertices;
 	for (int i = 0; i < CHUNK_SIZE; i++)
 	{
 		for (int j = 0; j < CHUNK_SIZE; j++)
@@ -342,9 +341,9 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 			}
 		}
 	}
-	chunk->vertexCounts[0] = mesher->numVertices - chunk->vertexOffsets[0];
+	mesher->vertexCounts[0] = mesher->numVertices - mesher->vertexOffsets[0];
 
-	chunk->vertexOffsets[1] = mesher->numVertices;
+	mesher->vertexOffsets[1] = mesher->numVertices;
 	for (int i = 0; i < CHUNK_SIZE; i++)
 	{
 		for (int j = 0; j < CHUNK_SIZE; j++)
@@ -381,9 +380,9 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 			}
 		}
 	}
-	chunk->vertexCounts[1] = mesher->numVertices - chunk->vertexOffsets[1];
+	mesher->vertexCounts[1] = mesher->numVertices - mesher->vertexOffsets[1];
 
-	chunk->vertexOffsets[2] = mesher->numVertices;
+	mesher->vertexOffsets[2] = mesher->numVertices;
 	for (int i = 0; i < CHUNK_SIZE; i++)
 	{
 		for (int j = 0; j < CHUNK_SIZE; j++)
@@ -420,9 +419,9 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 			}
 		}
 	}
-	chunk->vertexCounts[2] = mesher->numVertices - chunk->vertexOffsets[2];
+	mesher->vertexCounts[2] = mesher->numVertices - mesher->vertexOffsets[2];
 
-	chunk->vertexOffsets[3] = mesher->numVertices;
+	mesher->vertexOffsets[3] = mesher->numVertices;
 	for (int i = 0; i < CHUNK_SIZE; i++)
 	{
 		for (int j = 0; j < CHUNK_SIZE; j++)
@@ -459,9 +458,9 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 			}
 		}
 	}
-	chunk->vertexCounts[3] = mesher->numVertices - chunk->vertexOffsets[3];
+	mesher->vertexCounts[3] = mesher->numVertices - mesher->vertexOffsets[3];
 
-	chunk->vertexOffsets[4] = mesher->numVertices;
+	mesher->vertexOffsets[4] = mesher->numVertices;
 	for (int z = 0; z < CHUNK_SIZE; z++)
 	{
 		for (int x = 0; x < CHUNK_SIZE; x++)
@@ -498,9 +497,9 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 			}
 		}
 	}
-	chunk->vertexCounts[4] = mesher->numVertices - chunk->vertexOffsets[4];
+	mesher->vertexCounts[4] = mesher->numVertices - mesher->vertexOffsets[4];
 
-	chunk->vertexOffsets[5] = mesher->numVertices;
+	mesher->vertexOffsets[5] = mesher->numVertices;
 	for (int z = 0; z < CHUNK_SIZE; z++)
 	{
 		for (int x = 0; x < CHUNK_SIZE; x++)
@@ -537,10 +536,10 @@ static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* alloca
 			}
 		}
 	}
-	chunk->vertexCounts[5] = mesher->numVertices - chunk->vertexOffsets[5];
+	mesher->vertexCounts[5] = mesher->numVertices - mesher->vertexOffsets[5];
 }
 
-void ChunkBuilderRun(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocator, GameState* game)
+void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 {
 	SDL_assert(chunk->isLoaded);
 
@@ -555,7 +554,7 @@ void ChunkBuilderRun(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocato
 	}
 	*/
 
-	InitChunkBuilder(mesher, CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 6 * 4 / 2); // we divide by 2 since in the worst case scenario only every 2nd block is solid
+	mesher->numVertices = 0;
 
 	uint64_t beforeMeshing = SDL_GetTicksNS();
 
@@ -564,7 +563,7 @@ void ChunkBuilderRun(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocato
 	//	BuildGreedyFaces(mesher, i, chunk, allocator, game);
 	//chunk->vertexCount = mesher->numVertices;
 
-	GreedyMesh(mesher, chunk, allocator, game);
+	GreedyMesh(mesher, chunk, game);
 
 	uint64_t afterMeshing = SDL_GetTicksNS();
 	//SDL_Log("meshing %.2f ms", (afterMeshing - beforeMeshing) / 1e6f);
@@ -615,25 +614,11 @@ void ChunkBuilderRun(ChunkMesher* mesher, Chunk* chunk, ChunkAllocator* allocato
 	}
 	*/
 
-	if (mesher->numVertices > 0)
-	{
-		SDL_assert(mesher->numVertices <= CHUNK_VERTEX_BUFFER_SIZE);
-		int offset = AllocateChunk(allocator, mesher->numVertices);
-
-		for (int i = 0; i < 6; i++)
-			chunk->vertexOffsets[i] += offset;
-
-		//chunk->vertexBufferOffset = offset;
-		//chunk->numVertices = mesher->numVertices;
-
-		UpdateVertexBuffer(allocator->vertexBuffer, chunk->vertexOffsets[0] * sizeof(uint32_t), (uint8_t*)mesher->vertexData, mesher->numVertices * sizeof(uint32_t), cmdBuffer);
-	}
-
 	//ChunkBuilderCreateBuffers(builder, &chunk->instanceBuffer);
 	//ChunkBuilderCreateBuffers(builder, &chunk->vertexBuffer, &chunk->indexBuffer);
 
-	chunk->needsUpdate = false;
-	chunk->hasMesh = true;
+	//chunk->needsUpdate = false;
+	//chunk->hasMesh = true;
 }
 
 /*

@@ -100,6 +100,24 @@ struct ChunkLODLevel
 	uint8_t chunkFlags[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
 };
 
+struct ChunkGeneratorThreadData
+{
+	bool running;
+	SDL_Mutex* mutex;
+
+	bool hasData;
+	bool hasStarted;
+	bool hasFinished;
+
+	GameState* game;
+	WorldGenerator generator;
+	ChunkMesher mesher;
+
+	Chunk chunk;
+	bool generate;
+	bool remesh;
+};
+
 struct GameState
 {
 	Shader* chunkShader;
@@ -110,18 +128,20 @@ struct GameState
 	float cameraPitch, cameraYaw;
 	Quaternion cameraRotation;
 
-	WorldGenerator worldGenerator;
-	ChunkMesher chunkBuilder;
-	ChunkAllocator chunkAllocator;
-
 	Chunk chunks[MAX_LOADED_CHUNKS];
 	int numLoadedChunks;
 	int lastLoadedChunk;
 
-#define NUM_CHUNK_LOD_LEVELS 6
+#define NUM_CHUNK_LOD_LEVELS 8
 	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
+#define NUM_CHUNK_GENERATOR_THREADS 8
+	SDL_Thread* chunkGenerators[NUM_CHUNK_GENERATOR_THREADS];
+	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
+
+	ChunkAllocator chunkAllocator;
 	VertexBuffer* chunkVertexBuffer;
+
 	StorageBuffer* chunkStorageBuffer;
 	IndirectBuffer* chunkDrawBuffer;
 

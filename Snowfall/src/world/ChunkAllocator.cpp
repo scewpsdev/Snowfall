@@ -1,10 +1,9 @@
 #include "ChunkAllocator.h"
 
 
-void InitChunkAllocator(ChunkAllocator* allocator, VertexBuffer* vertexBuffer, int maxVertices)
+void InitChunkAllocator(ChunkAllocator* allocator, int maxVertices)
 {
 	allocator->maxVertices = maxVertices;
-	allocator->vertexBuffer = vertexBuffer;
 }
 
 int AllocateChunk(ChunkAllocator* allocator, int vertexCount)

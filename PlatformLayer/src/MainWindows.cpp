@@ -9,7 +9,9 @@
 #include "utils/BumpAllocator.h"
 
 
-#define GAME_CODE_DLL "Snowfall.dll"
+#define GAME_NAME "Snowfall"
+
+#define GAME_CODE_DLL GAME_NAME ".dll"
 
 #define Kilobytes(x) ((x) * 1024LL)
 #define Megabytes(x) (Kilobytes(x) * 1024LL)
@@ -38,7 +40,7 @@ SDL_Time GetWriteTime(const char* path)
 static SDL_SharedObject* LoadGameCode(GameInit_t* init, GameDestroy_t* destroy, GameIterate_t* iterate, GameOnEvent_t* onEvent)
 {
 	char tmpPath[256];
-	SDL_snprintf(tmpPath, 256, "Snowfall-%llu.dll", __rdtsc());
+	SDL_snprintf(tmpPath, 256, GAME_NAME "-%llu.dll", __rdtsc());
 	bool copySuccessful = false;
 	for (int i = 0; i < 50; i++)
 	{
@@ -232,8 +234,8 @@ int main(int argc, char** argv)
 
 	SDL_Quit();
 
-	system("del Snowfall-*.pdb");
-	system("del Snowfall-*.dll");
+	system("del " GAME_NAME "-*.pdb");
+	system("del " GAME_NAME "-*.dll");
 
 	return 0;
 }

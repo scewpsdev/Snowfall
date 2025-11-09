@@ -26,7 +26,6 @@ void GenerateChunk(WorldGenerator* generator, Chunk* chunk)
 	float amplitude = 64;
 
 	chunk->isEmpty = true;
-	SDL_memset(chunk->blocks, 0, sizeof(chunk->blocks));
 
 	for (int z = 0; z < CHUNK_SIZE; z++)
 	{
@@ -41,19 +40,21 @@ void GenerateChunk(WorldGenerator* generator, Chunk* chunk)
 
 			for (int y = 0; y < CHUNK_SIZE; y++)
 			{
+				BlockData* block = chunk->getBlockData(x, y, z);
+
 				int worldY = chunk->position.y + y * chunk->chunkScale;
 				if (worldY < height)
 				{
-					BlockData* block = chunk->getBlockData(x, y, z);
 					block->id = 1 + (uint8_t)generator->random.next() % 15;
 					chunk->isEmpty = false;
+				}
+				else
+				{
+					block->id = 0;
 				}
 			}
 		}
 	}
-
-	if (chunk->isEmpty)
-		chunk->hasMesh = true;
 
 	chunk->needsUpdate = true;
 }
