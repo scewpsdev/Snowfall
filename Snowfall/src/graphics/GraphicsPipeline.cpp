@@ -42,12 +42,13 @@ void ReloadGraphicsPipeline(GraphicsPipeline* pipeline)
 
 	createInfo.target_info.num_color_targets = pipeline->pipelineInfo.numColorTargets;
 	createInfo.target_info.color_target_descriptions = pipeline->pipelineInfo.colorTargets;
-	createInfo.target_info.has_depth_stencil_target = true;
-	createInfo.target_info.depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
+
+	createInfo.target_info.has_depth_stencil_target = pipelineInfo->hasDepthTarget;
+	createInfo.target_info.depth_stencil_format = pipelineInfo->depthFormat;
 
 	createInfo.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS;
-	createInfo.depth_stencil_state.enable_depth_test = true;
-	createInfo.depth_stencil_state.enable_depth_write = true;
+	createInfo.depth_stencil_state.enable_depth_test = pipelineInfo->hasDepthTarget;
+	createInfo.depth_stencil_state.enable_depth_write = pipelineInfo->hasDepthTarget;
 
 	createInfo.vertex_input_state.num_vertex_attributes = pipeline->pipelineInfo.numAttributes;
 	createInfo.vertex_input_state.vertex_attributes = pipeline->pipelineInfo.attributes;
@@ -75,6 +76,9 @@ GraphicsPipelineInfo CreateGraphicsPipelineInfo(Shader* shader, int numVertexBuf
 	pipelineInfo.colorTargets[0].blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
 	pipelineInfo.colorTargets[0].blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
 	pipelineInfo.colorTargets[0].blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+
+	pipelineInfo.hasDepthTarget = true;
+	pipelineInfo.depthFormat = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
 
 	for (int i = 0; i < numVertexBuffers; i++)
 		pipelineInfo.numAttributes += vertexLayouts[i].numAttributes;

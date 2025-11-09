@@ -177,19 +177,106 @@ static int ChunkGeneratorMain(void* ptr)
 	return 0;
 }
 
+static SDL_GPUTexture* CreateDepthTarget(int width, int height)
+{
+	SDL_GPUTextureCreateInfo depthTextureInfo = {};
+	depthTextureInfo.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
+	depthTextureInfo.width = width;
+	depthTextureInfo.height = height;
+	depthTextureInfo.layer_count_or_depth = 1;
+	depthTextureInfo.num_levels = 1;
+	depthTextureInfo.type = SDL_GPU_TEXTURETYPE_2D;
+	depthTextureInfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+	return SDL_CreateGPUTexture(device, &depthTextureInfo);
+}
+
+static RenderTarget* CreateGBuffer(int width, int height)
+{
+#define GBUFFER_COLOR_ATTACHMENTS 3
+	ColorAttachmentInfo colorAttachments[GBUFFER_COLOR_ATTACHMENTS];
+	// position
+	colorAttachments[0] = {};
+	colorAttachments[0].format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
+	colorAttachments[0].loadOp = SDL_GPU_LOADOP_CLEAR;
+	colorAttachments[0].storeOp = SDL_GPU_STOREOP_STORE;
+	colorAttachments[0].clearColor = vec4(0.0f);
+	// normal
+	colorAttachments[1] = {};
+	colorAttachments[1].format = SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT;
+	colorAttachments[1].loadOp = SDL_GPU_LOADOP_DONT_CARE;
+	colorAttachments[1].storeOp = SDL_GPU_STOREOP_STORE;
+	colorAttachments[1].clearColor = vec4(0.0f);
+	// color
+	colorAttachments[2] = {};
+	colorAttachments[2].format = SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT;
+	colorAttachments[2].loadOp = SDL_GPU_LOADOP_DONT_CARE;
+	colorAttachments[2].storeOp = SDL_GPU_STOREOP_STORE;
+
+	DepthAttachmentInfo depthAttachment = {};
+	depthAttachment.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
+	depthAttachment.loadOp = SDL_GPU_LOADOP_CLEAR;
+	depthAttachment.storeOp = SDL_GPU_STOREOP_STORE;
+	depthAttachment.clearDepth = 1;
+
+	return CreateRenderTarget(width, height, GBUFFER_COLOR_ATTACHMENTS, colorAttachments, &depthAttachment);
+}
+
 void GameInit()
 {
+	game->depthTexture = CreateDepthTarget(width, height);
+	game->gbuffer = CreateGBuffer(width, height);
+
 	game->chunkShader = LoadGraphicsShader("res/shaders/chunk.vs.glsl.bin", "res/shaders/chunk.fs.glsl.bin");
 
 	AddFileWatcher(PROJECT_PATH "/res/shaders/chunk.vs.glsl");
 	AddFileWatcher(PROJECT_PATH "/res/shaders/chunk.fs.glsl");
 
 	GraphicsPipelineInfo cubePipelineInfo = CreateGraphicsPipelineInfo(game->chunkShader, 1, chunkBufferLayouts);
+	cubePipelineInfo.numColorTargets = GBUFFER_COLOR_ATTACHMENTS;
+	cubePipelineInfo.colorTargets[0].format = game->gbuffer->colorAttachmentInfos[0].format;
+	cubePipelineInfo.colorTargets[1].format = game->gbuffer->colorAttachmentInfos[1].format;
+	cubePipelineInfo.colorTargets[2].format = game->gbuffer->colorAttachmentInfos[2].format;
+	cubePipelineInfo.hasDepthTarget = true;
+	cubePipelineInfo.depthFormat = game->gbuffer->depthAttachmentInfo.format;
 	game->chunkPipeline = CreateGraphicsPipeline(&cubePipelineInfo);
 
 	game->chunkVertexBuffer = CreateVertexBuffer(MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE, &chunkBufferLayouts[0], nullptr, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE * sizeof(uint32_t), cmdBuffer);
 	game->chunkStorageBuffer = CreateStorageBuffer(nullptr, MAX_LOADED_CHUNKS * 6 * sizeof(ChunkData), cmdBuffer);
 	game->chunkDrawBuffer = CreateIndirectBuffer(MAX_LOADED_CHUNKS * 6, false);
+
+	game->lightingShader = LoadGraphicsShader("res/shaders/lighting.vs.glsl.bin", "res/shaders/lighting.fs.glsl.bin");
+
+	{
+		GraphicsPipelineInfo pipelineInfo = {};
+
+		pipelineInfo.shader = game->lightingShader;
+		pipelineInfo.primitiveType = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+		pipelineInfo.cullMode = SDL_GPU_CULLMODE_BACK;
+
+		pipelineInfo.numColorTargets = 1;
+		pipelineInfo.colorTargets[0].format = SDL_GetGPUSwapchainTextureFormat(device, window);
+		pipelineInfo.colorTargets[0].blend_state.enable_blend = false;
+
+		pipelineInfo.numAttributes = 1;
+		pipelineInfo.attributes[0] = {};
+		pipelineInfo.attributes[0].buffer_slot = 0;
+		pipelineInfo.attributes[0].location = 0;
+		pipelineInfo.attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
+		pipelineInfo.attributes[0].offset = 0;
+
+		pipelineInfo.numVertexBuffers = 1;
+		pipelineInfo.bufferDescriptions[0].slot = 0;
+		pipelineInfo.bufferDescriptions[0].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+		pipelineInfo.bufferDescriptions[0].instance_step_rate = 0;
+		pipelineInfo.bufferDescriptions[0].pitch = GetVertexFormatSize(pipelineInfo.attributes[0].format);
+
+		game->lightingPipeline = CreateGraphicsPipeline(&pipelineInfo);
+	}
+
+	InitScreenQuad(&game->screenQuad, cmdBuffer);
+
+	SDL_GPUSamplerCreateInfo samplerInfo = {};
+	game->screenQuadSampler = SDL_CreateGPUSampler(device, &samplerInfo);
 
 	InitChunkAllocator(&game->chunkAllocator, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE);
 
@@ -235,6 +322,17 @@ void GameDestroy()
 
 	DestroyGraphicsPipeline(game->chunkPipeline);
 	DestroyShader(game->chunkShader);
+}
+
+void GameResize(int newWidth, int newHeight)
+{
+	if (game->depthTexture)
+		SDL_ReleaseGPUTexture(device, game->depthTexture);
+	game->depthTexture = CreateDepthTarget(newWidth, newHeight);
+
+	if (game->gbuffer)
+		DestroyRenderTarget(game->gbuffer);
+	game->gbuffer = CreateGBuffer(newWidth, newHeight);
 }
 
 static bool ChunkGeneratorAvailable(int* id)
@@ -467,7 +565,7 @@ void GameUpdate()
 
 	if (delta.lengthSquared() > 0)
 	{
-		float speed = app->keys[SDL_SCANCODE_LSHIFT] ? 40.0f : app->keys[SDL_SCANCODE_LALT] ? 5.0f : 10.0f;
+		float speed = app->keys[SDL_SCANCODE_LSHIFT] ? 100.0f : app->keys[SDL_SCANCODE_LALT] ? 10.0f : 40.0f;
 		vec3 velocity = delta.normalized() * speed;
 		vec3 displacement = velocity * deltaTime;
 		game->cameraPosition += displacement;
@@ -629,38 +727,50 @@ void GameRender()
 
 	int numDrawCommands = UpdateDrawBuffers(frustumPlanes);
 
-	SDL_GPUColorTargetInfo colorTarget = {};
-	colorTarget.clear_color = { 0.4f, 0.4f, 1.0f, 1.0f };
-	colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
-	colorTarget.store_op = SDL_GPU_STOREOP_STORE;
-	colorTarget.texture = swapchain;
+	// geometry pass
+	{
+		SDL_GPURenderPass* renderPass = BindRenderTarget(game->gbuffer, cmdBuffer);
 
-	SDL_GPUDepthStencilTargetInfo depthTarget = {};
-	depthTarget.clear_depth = 1;
-	depthTarget.load_op = SDL_GPU_LOADOP_CLEAR;
-	depthTarget.store_op = SDL_GPU_STOREOP_DONT_CARE;
-	depthTarget.texture = app->depthTexture;
+		SDL_BindGPUGraphicsPipeline(renderPass, game->chunkPipeline->pipeline);
 
-	SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdBuffer, &colorTarget, 1, &depthTarget);
+		SDL_GPUBufferBinding vertexBinding;
+		vertexBinding.buffer = game->chunkVertexBuffer->buffer;
+		vertexBinding.offset = 0;
 
-	SDL_BindGPUGraphicsPipeline(renderPass, game->chunkPipeline->pipeline);
+		SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
 
-	SDL_GPUBufferBinding vertexBinding;
-	vertexBinding.buffer = game->chunkVertexBuffer->buffer;
-	vertexBinding.offset = 0;
+		SDL_GPUBuffer* storageBuffer = game->chunkStorageBuffer->buffer;
+		SDL_BindGPUVertexStorageBuffers(renderPass, 0, &storageBuffer, 1);
 
-	SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
+		ChunkUniforms uniforms = {};
+		uniforms.pv = pv;
+		SDL_PushGPUVertexUniformData(cmdBuffer, 0, &uniforms, sizeof(uniforms));
 
-	SDL_GPUBuffer* storageBuffer = game->chunkStorageBuffer->buffer;
-	SDL_BindGPUVertexStorageBuffers(renderPass, 0, &storageBuffer, 1);
+		SDL_DrawGPUPrimitivesIndirect(renderPass, game->chunkDrawBuffer->buffer, 0, numDrawCommands);
 
-	ChunkUniforms uniforms = {};
-	uniforms.pv = pv;
-	//uniforms.chunkPosition = chunk->position;
-	//uniforms.chunkSize = ipow(2, chunk->lod);
-	SDL_PushGPUVertexUniformData(cmdBuffer, 0, &uniforms, sizeof(uniforms));
+		SDL_EndGPURenderPass(renderPass);
+	}
 
-	SDL_DrawGPUPrimitivesIndirect(renderPass, game->chunkDrawBuffer->buffer, 0, numDrawCommands);
+	// lighting pass
+	{
+		SDL_GPUColorTargetInfo colorTarget = {};
+		colorTarget.clear_color = { 0.4f, 0.4f, 1.0f, 1.0f };
+		colorTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+		colorTarget.store_op = SDL_GPU_STOREOP_STORE;
+		colorTarget.texture = swapchain;
 
-	SDL_EndGPURenderPass(renderPass);
+		SDL_GPUDepthStencilTargetInfo depthTarget = {};
+		depthTarget.clear_depth = 1;
+		depthTarget.load_op = SDL_GPU_LOADOP_CLEAR;
+		depthTarget.store_op = SDL_GPU_STOREOP_DONT_CARE;
+		depthTarget.texture = game->depthTexture;
+
+		SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdBuffer, &colorTarget, 1, &depthTarget);
+
+		SDL_BindGPUGraphicsPipeline(renderPass, game->lightingPipeline->pipeline);
+
+		RenderScreenQuad(&game->screenQuad, renderPass, game->gbuffer->numColorAttachments, game->gbuffer->colorAttachments, game->screenQuadSampler, cmdBuffer);
+
+		SDL_EndGPURenderPass(renderPass);
+	}
 }

@@ -2,9 +2,10 @@
 
 layout (location = 0) in uint in_data;
 
-layout (location = 0) out vec3 v_normal;
-layout (location = 1) out vec3 v_color;
-layout (location = 2) out vec3 v_localpos;
+layout (location = 0) out vec3 v_position;
+layout (location = 1) out vec3 v_normal;
+layout (location = 2) out vec3 v_color;
+layout (location = 3) out vec3 v_localpos;
 
 layout(std140, set = 1, binding = 0) uniform UniformBlock {
     mat4 pv;
@@ -124,8 +125,11 @@ void main()
 	ivec3 chunkPosition = chunkPositionScale.xyz;
 	int chunkSize = chunkPositionScale.w;
 
-	gl_Position = pv * vec4(chunkPosition + (blockPosition + vertexPosition) * chunkSize, 1);
+	vec3 worldPosition = chunkPosition + (blockPosition + vertexPosition) * chunkSize;
 
+	gl_Position = pv * vec4(worldPosition, 1);
+
+	v_position = worldPosition;
 	v_normal = normals[face];
 	v_color = getColorFromID(color);
 	v_localpos = localPos;

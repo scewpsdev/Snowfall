@@ -26,19 +26,6 @@ SDL_GPUCommandBuffer* cmdBuffer = nullptr;
 #include "game/Game.cpp"
 
 
-static SDL_GPUTexture* CreateDepthTarget(int width, int height)
-{
-	SDL_GPUTextureCreateInfo depthTextureInfo = {};
-	depthTextureInfo.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
-	depthTextureInfo.width = width;
-	depthTextureInfo.height = height;
-	depthTextureInfo.layer_count_or_depth = 1;
-	depthTextureInfo.num_levels = 1;
-	depthTextureInfo.type = SDL_GPU_TEXTURETYPE_2D;
-	depthTextureInfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
-	return SDL_CreateGPUTexture(device, &depthTextureInfo);
-}
-
 extern "C" __declspec(dllexport) SDL_AppResult AppInit(GameMemory* memory, AppState* appState, int argc, char** argv)
 {
 	::memory = memory;
@@ -61,8 +48,6 @@ extern "C" __declspec(dllexport) SDL_AppResult AppInit(GameMemory* memory, AppSt
 
 	SDL_GetMouseState(&app->lastMousePosition.x, &app->lastMousePosition.y);
 
-	app->depthTexture = CreateDepthTarget(width, height);
-
 	cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
 
 	GameInit();
@@ -75,12 +60,10 @@ extern "C" __declspec(dllexport) SDL_AppResult AppInit(GameMemory* memory, AppSt
 
 void AppResize(int newWidth, int newHeight)
 {
-	if (app->depthTexture)
-		SDL_ReleaseGPUTexture(device, app->depthTexture);
-	app->depthTexture = CreateDepthTarget(newWidth, newHeight);
-
 	width = newWidth;
 	height = newHeight;
+
+	GameResize(newWidth, newHeight);
 }
 
 extern "C" __declspec(dllexport) void AppDestroy(GameMemory* memory, AppState* appState, SDL_AppResult result)

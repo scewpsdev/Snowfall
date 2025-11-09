@@ -9,6 +9,7 @@
 
 extern SDL_Window* window;
 extern SDL_GPUDevice* device;
+extern SDL_GPUTexture* swapchain;
 
 
 static Renderer2DLayer CreateLayer(Renderer2DLayerInfo* layerInfo)
@@ -16,7 +17,13 @@ static Renderer2DLayer CreateLayer(Renderer2DLayerInfo* layerInfo)
 	Renderer2DLayer layer = {};
 
 	layer.info = *layerInfo;
-	layer.renderTarget = CreateRenderTarget(layerInfo->width, layerInfo->height, SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT);
+
+	ColorAttachmentInfo colorAttachment = {};
+	colorAttachment.format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
+	colorAttachment.loadOp = SDL_GPU_LOADOP_CLEAR;
+	colorAttachment.storeOp = SDL_GPU_STOREOP_STORE;
+	colorAttachment.clearColor = vec4(0.0f);
+	layer.renderTarget = CreateRenderTarget(layerInfo->width, layerInfo->height, 1, &colorAttachment, nullptr);
 
 	SDL_GPUBufferCreateInfo spriteDataBufferInfo = {};
 	spriteDataBufferInfo.size = layerInfo->maxSprites * sizeof(SpriteData);
@@ -46,31 +53,76 @@ void InitRenderer2D(Renderer2D* renderer, int numLayers, Renderer2DLayerInfo* la
 	renderer->triangleShader = LoadGraphicsShader("res/shaders/sprite.vs.glsl.bin", "res/shaders/sprite.fs.glsl.bin");
 	renderer->texture = LoadTexture("res/textures/ravioli_atlas.png.bin", cmdBuffer);
 
-	SDL_GPUGraphicsPipelineCreateInfo pipelineInfo = {};
-	pipelineInfo.vertex_shader = renderer->triangleShader->vertex;
-	pipelineInfo.fragment_shader = renderer->triangleShader->fragment;
-	pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+	{
+		SDL_GPUGraphicsPipelineCreateInfo pipelineInfo = {};
+		pipelineInfo.vertex_shader = renderer->triangleShader->vertex;
+		pipelineInfo.fragment_shader = renderer->triangleShader->fragment;
+		pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
 
-	SDL_GPUColorTargetDescription targetDescriptions[1];
-	targetDescriptions[0] = {};
-	targetDescriptions[0].format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
-	targetDescriptions[0].blend_state.enable_blend = true;
-	targetDescriptions[0].blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-	targetDescriptions[0].blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
-	targetDescriptions[0].blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-	targetDescriptions[0].blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-	targetDescriptions[0].blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-	targetDescriptions[0].blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+		SDL_GPUColorTargetDescription targetDescriptions[1];
+		targetDescriptions[0] = {};
+		targetDescriptions[0].format = SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT;
+		targetDescriptions[0].blend_state.enable_blend = true;
+		targetDescriptions[0].blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+		targetDescriptions[0].blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+		targetDescriptions[0].blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+		targetDescriptions[0].blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+		targetDescriptions[0].blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+		targetDescriptions[0].blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
 
-	pipelineInfo.target_info.num_color_targets = 1;
-	pipelineInfo.target_info.color_target_descriptions = targetDescriptions;
+		pipelineInfo.target_info.num_color_targets = 1;
+		pipelineInfo.target_info.color_target_descriptions = targetDescriptions;
 
-	renderer->pipeline = SDL_CreateGPUGraphicsPipeline(device, &pipelineInfo);
+		renderer->pipeline = SDL_CreateGPUGraphicsPipeline(device, &pipelineInfo);
+	}
 
 	SDL_GPUSamplerCreateInfo samplerInfo = {};
 	renderer->sampler = SDL_CreateGPUSampler(device, &samplerInfo);
 
 	InitScreenQuad(&renderer->screenQuad, cmdBuffer);
+
+	renderer->quadShader = LoadGraphicsShader("res/shaders/screenquad.vs.glsl.bin", "res/shaders/screenquad.fs.glsl.bin");
+
+	{
+		SDL_GPUGraphicsPipelineCreateInfo pipelineInfo = {};
+		pipelineInfo.vertex_shader = renderer->quadShader->vertex;
+		pipelineInfo.fragment_shader = renderer->quadShader->fragment;
+		pipelineInfo.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+
+		SDL_GPUColorTargetDescription targetDescriptions[1];
+		targetDescriptions[0] = {};
+		targetDescriptions[0].format = SDL_GetGPUSwapchainTextureFormat(device, window);
+		targetDescriptions[0].blend_state.enable_blend = true;
+		targetDescriptions[0].blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+		targetDescriptions[0].blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+		targetDescriptions[0].blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+		targetDescriptions[0].blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+		targetDescriptions[0].blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+		targetDescriptions[0].blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+
+		pipelineInfo.target_info.num_color_targets = 1;
+		pipelineInfo.target_info.color_target_descriptions = targetDescriptions;
+
+		SDL_GPUVertexAttribute attributes[1];
+		attributes[0].buffer_slot = 0;
+		attributes[0].location = 0;
+		attributes[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+		attributes[0].offset = 0;
+
+		pipelineInfo.vertex_input_state.num_vertex_attributes = 1;
+		pipelineInfo.vertex_input_state.vertex_attributes = attributes;
+
+		SDL_GPUVertexBufferDescription bufferDescriptions[1];
+		bufferDescriptions[0].slot = 0;
+		bufferDescriptions[0].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+		bufferDescriptions[0].instance_step_rate = 0;
+		bufferDescriptions[0].pitch = sizeof(vec3);
+
+		pipelineInfo.vertex_input_state.num_vertex_buffers = 1;
+		pipelineInfo.vertex_input_state.vertex_buffer_descriptions = bufferDescriptions;
+
+		renderer->quadPipeline = SDL_CreateGPUGraphicsPipeline(device, &pipelineInfo);
+	}
 }
 
 static void DestroyLayer(Renderer2DLayer* layer)
@@ -83,6 +135,10 @@ static void DestroyLayer(Renderer2DLayer* layer)
 
 void DestroyRenderer2D(Renderer2D* renderer)
 {
+	DestroyShader(renderer->quadShader);
+
+	SDL_ReleaseGPUGraphicsPipeline(device, renderer->quadPipeline);
+
 	DestroyScreenQuad(&renderer->screenQuad);
 
 	DestroyTexture(renderer->texture);
@@ -136,13 +192,7 @@ static void RenderLayer(Renderer2DLayer* layer, Renderer2D* renderer, SDL_GPUCom
 	if (layer->numSprites == 0)
 		return;
 
-	SDL_GPUColorTargetInfo colorTargetInfo = {};
-	colorTargetInfo.clear_color = { 0.0f, 0.0f, 0.0f, 0.0f };
-	colorTargetInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-	colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
-	colorTargetInfo.texture = layer->renderTarget->texture;
-
-	SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdBuffer, &colorTargetInfo, 1, nullptr);
+	SDL_GPURenderPass* renderPass = BindRenderTarget(layer->renderTarget, cmdBuffer);
 
 	SDL_BindGPUGraphicsPipeline(renderPass, renderer->pipeline);
 
@@ -191,8 +241,20 @@ void Renderer2DEnd(Renderer2D* renderer, SDL_GPUCommandBuffer* cmdBuffer)
 		RenderLayer(&renderer->layers[i], renderer, cmdBuffer);
 	}
 
+	SDL_GPUColorTargetInfo colorTargetInfo = {};
+	colorTargetInfo.clear_color = { 0.0f, 0.0f, 0.0f, 1.0f };
+	colorTargetInfo.load_op = SDL_GPU_LOADOP_LOAD;
+	colorTargetInfo.store_op = SDL_GPU_STOREOP_STORE;
+	colorTargetInfo.texture = swapchain;
+
+	SDL_GPURenderPass* renderPass = SDL_BeginGPURenderPass(cmdBuffer, &colorTargetInfo, 1, nullptr);
+
+	SDL_BindGPUGraphicsPipeline(renderPass, renderer->quadPipeline);
+
 	for (int i = 0; i < renderer->numLayers; i++)
 	{
-		RenderScreenQuad(&renderer->screenQuad, renderer->layers[i].renderTarget->texture, cmdBuffer);
+		RenderScreenQuad(&renderer->screenQuad, renderPass, 1, renderer->layers[i].renderTarget->colorAttachments, renderer->sampler, cmdBuffer);
 	}
+
+	SDL_EndGPURenderPass(renderPass);
 }

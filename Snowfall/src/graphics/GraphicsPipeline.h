@@ -16,6 +16,9 @@ struct GraphicsPipelineInfo
 	int numColorTargets;
 	SDL_GPUColorTargetDescription colorTargets[MAX_PIPELINE_COLOR_TARGETS];
 
+	bool hasDepthTarget;
+	SDL_GPUTextureFormat depthFormat;
+
 #define MAX_PIPELINE_VERTEX_ATTRIBUTES 8
 	int numAttributes;
 	SDL_GPUVertexAttribute attributes[MAX_PIPELINE_VERTEX_ATTRIBUTES];

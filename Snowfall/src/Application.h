@@ -145,6 +145,14 @@ struct GameState
 	StorageBuffer* chunkStorageBuffer;
 	IndirectBuffer* chunkDrawBuffer;
 
+	SDL_GPUTexture* depthTexture;
+	RenderTarget* gbuffer;
+	Shader* lightingShader;
+	GraphicsPipeline* lightingPipeline;
+
+	ScreenQuad screenQuad;
+	SDL_GPUSampler* screenQuadSampler;
+
 	int numRenderedChunks;
 	int numRenderedVertices;
 };
@@ -155,8 +163,6 @@ struct AppState
 
 	SDL_Window* window;
 	SDL_GPUDevice* device;
-
-	SDL_GPUTexture* depthTexture;
 
 	uint64_t now;
 	uint64_t lastFrame;

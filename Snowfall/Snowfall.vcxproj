@@ -213,6 +213,12 @@
   <ItemGroup>
     <None Include="res\shaders\chunk.fs.glsl" />
     <None Include="res\shaders\chunk.vs.glsl" />
+    <None Include="res\shaders\lighting.fs.glsl" />
+    <None Include="res\shaders\lighting.vs.glsl" />
+    <None Include="res\shaders\screenquad.fs.glsl" />
+    <None Include="res\shaders\screenquad.vs.glsl" />
+    <None Include="res\shaders\sprite.fs.glsl" />
+    <None Include="res\shaders\sprite.vs.glsl" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\Repositories\SDL3-3.3.2\VisualC\SDL\SDL.vcxproj">

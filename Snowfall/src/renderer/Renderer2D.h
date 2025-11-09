@@ -69,6 +69,8 @@ struct Renderer2D
 	Renderer2DLayer* layers;
 
 	ScreenQuad screenQuad;
+	Shader* quadShader;
+	SDL_GPUGraphicsPipeline* quadPipeline;
 };
 
 
