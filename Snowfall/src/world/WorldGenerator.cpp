@@ -5,7 +5,7 @@ void InitWorldGenerator(WorldGenerator* generator)
 {
 	generator->seed = 12345;
 	generator->random = Random(generator->seed);
-	generator->simplex = Simplex(generator->seed);
+	InitSimplex(&generator->simplex);
 }
 
 static float SampleNoise(WorldGenerator* generator, float x, float z, int octaves, float frequencyMultiplier, float amplitudeMultiplier)
@@ -15,7 +15,7 @@ static float SampleNoise(WorldGenerator* generator, float x, float z, int octave
 	{
 		float frequency = powf(frequencyMultiplier, (float)i);
 		float amplitude = powf(amplitudeMultiplier, (float)i);
-		noise += amplitude * generator->simplex.sample2f(x * frequency, z * frequency);
+		noise += amplitude * Simplex2f(&generator->simplex, x * frequency, z * frequency);
 	}
 	return noise;
 }
@@ -26,6 +26,10 @@ void GenerateChunk(WorldGenerator* generator, Chunk* chunk)
 	float amplitude = 64;
 
 	chunk->isEmpty = true;
+
+	uint64_t before = SDL_GetTicksNS();
+
+	const int grassLayerHeight = 1;
 
 	for (int z = 0; z < CHUNK_SIZE; z++)
 	{
@@ -43,18 +47,26 @@ void GenerateChunk(WorldGenerator* generator, Chunk* chunk)
 				BlockData* block = chunk->getBlockData(x, y, z);
 
 				int worldY = chunk->position.y + y * chunk->chunkScale;
-				if (worldY < height)
+				if (worldY < height - grassLayerHeight)
 				{
-					block->id = 1 + (uint8_t)generator->random.next() % 15;
-					chunk->isEmpty = false;
+					block->id = BLOCK_TYPE_STONE;
+				}
+				else if (worldY < height)
+				{
+					block->id = BLOCK_TYPE_GRASS;
 				}
 				else
 				{
 					block->id = 0;
 				}
+
+				if (block->id) chunk->isEmpty = false;
 			}
 		}
 	}
+
+	uint64_t after = SDL_GetTicksNS();
+	//SDL_Log("worldgen %.2f ms", (after - before) / 1e6f);
 
 	chunk->needsUpdate = true;
 }

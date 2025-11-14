@@ -113,6 +113,9 @@ struct ChunkGeneratorThreadData
 	WorldGenerator generator;
 	ChunkMesher mesher;
 
+	SDL_GPUTransferBuffer* transferBuffer;
+	void* mappedBuffer;
+
 	Chunk chunk;
 	bool generate;
 	bool remesh;
@@ -144,6 +147,7 @@ struct GameState
 
 	StorageBuffer* chunkStorageBuffer;
 	IndirectBuffer* chunkDrawBuffer;
+	Texture* chunkPalette;
 
 	SDL_GPUTexture* depthTexture;
 	RenderTarget* gbuffer;
@@ -151,7 +155,7 @@ struct GameState
 	GraphicsPipeline* lightingPipeline;
 
 	ScreenQuad screenQuad;
-	SDL_GPUSampler* screenQuadSampler;
+	SDL_GPUSampler* defaultSampler;
 
 	int numRenderedChunks;
 	int numRenderedVertices;

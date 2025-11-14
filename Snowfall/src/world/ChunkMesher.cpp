@@ -62,7 +62,7 @@ static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirecti
 	SDL_assert(x < CHUNK_SIZE && y < CHUNK_SIZE && z < CHUNK_SIZE);
 	SDL_assert(sx > 0 && sx <= CHUNK_SIZE && sy > 0 && sy <= CHUNK_SIZE);
 	SDL_assert(faceDirection < 6);
-	SDL_assert(colorID < 16);
+	SDL_assert(colorID >= 0 && colorID < 16);
 
 	uint32_t data = 0;
 	data |= x;
@@ -76,11 +76,13 @@ static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirecti
 	return data;
 }
 
-static void ChunkBuilderAddFace(ChunkMesher* mesher, ivec3 position, int sx, int sy, int faceDirection, int colorID)
+static void ChunkBuilderAddFace(ChunkMesher* mesher, ivec3 position, int sx, int sy, int faceDirection, uint8_t blockType)
 {
 	SDL_assert(mesher->numVertices + 3 <= CHUNK_MESHER_VERTEX_CAPACITY);
 
+	int colorID = blockType - 1;
 	uint32_t data = EncodeVertexData(position /*+ vertices[faceDirection * 3 + i]*/, sx, sy, faceDirection, colorID);
+
 	mesher->vertexData[mesher->numVertices + 0] = data;
 	mesher->vertexData[mesher->numVertices + 1] = data;
 	mesher->vertexData[mesher->numVertices + 2] = data;
@@ -153,34 +155,137 @@ static uint32_t TrailingOnes(uint32_t value)
 	return TrailingZeros(~value);
 }
 
-static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
+static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* neighbors[6], uint32_t neighborFlags[6], GameState* game)
 {
 	uint64_t* binaryGrid = mesher->binaryGrid;
 
 	uint64_t* faceMasks = mesher->faceMasks;
 
-	uint32_t* slicesXY = mesher->slicesXY;
-	uint32_t* slicesZY = mesher->slicesZY;
-	uint32_t* slicesXZ = mesher->slicesXZ;
+	//uint32_t* slicesXY = mesher->slicesXY;
+	//uint32_t* slicesZY = mesher->slicesZY;
+	//uint32_t* slicesXZ = mesher->slicesXZ;
 
 	SDL_memset(binaryGrid, 0, sizeof(mesher->binaryGrid));
 
 	SDL_memset(faceMasks, 0, sizeof(mesher->faceMasks));
 
-	SDL_memset(slicesXY, 0, sizeof(mesher->slicesXY));
-	SDL_memset(slicesZY, 0, sizeof(mesher->slicesZY));
-	SDL_memset(slicesXZ, 0, sizeof(mesher->slicesXZ));
+	//SDL_memset(slicesXY, 0, sizeof(mesher->slicesXY));
+	//SDL_memset(slicesZY, 0, sizeof(mesher->slicesZY));
+	//SDL_memset(slicesXZ, 0, sizeof(mesher->slicesXZ));
 
 	// build axis bit fields
+	for (int z = 0; z < CHUNK_SIZE; z++)
+	{
+		for (int y = 0; y < CHUNK_SIZE; y++)
+		{
+			for (int x = 0; x < CHUNK_SIZE; x++)
+			{
+				bool solid = chunk->blocks[x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				if (solid)
+				{
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (z + 1) + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (x + 1);
+					binaryGrid[(z + 1) * CHUNK_SIZE_P + (x + 1) + 2 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (y + 1);
+				}
+			}
+		}
+	}
+	for (int z = 0; z < CHUNK_SIZE; z++)
+	{
+		for (int y = 0; y < CHUNK_SIZE; y++)
+		{
+			{
+				bool solid = neighborFlags[0] ? neighborFlags[0] & CHUNK_FLAG_SOLID : neighbors[0] && neighbors[0]->blocks[(CHUNK_SIZE - 1) + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				if (solid)
+				{
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + 0 + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (z + 1) + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << 0;
+					binaryGrid[(z + 1) * CHUNK_SIZE_P + 0 + 2 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (y + 1);
+				}
+			}
+			{
+				bool solid = neighborFlags[1] ? neighborFlags[1] & CHUNK_FLAG_SOLID : neighbors[1] && neighbors[1]->blocks[(0) + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				if (solid)
+				{
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (CHUNK_SIZE + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (z + 1) + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (CHUNK_SIZE + 1);
+					binaryGrid[(z + 1) * CHUNK_SIZE_P + (CHUNK_SIZE + 1) + 2 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (y + 1);
+				}
+			}
+		}
+	}
+	for (int z = 0; z < CHUNK_SIZE; z++)
+	{
+		for (int x = 0; x < CHUNK_SIZE; x++)
+		{
+			{
+				bool solid = neighborFlags[2] ? neighborFlags[2] & CHUNK_FLAG_SOLID : neighbors[2] && neighbors[2]->blocks[x + (CHUNK_SIZE - 1) * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				if (solid)
+				{
+					binaryGrid[(0) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
+					binaryGrid[(0) * CHUNK_SIZE_P + (z + 1) + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (x + 1);
+					binaryGrid[(z + 1) * CHUNK_SIZE_P + (x + 1) + 2 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (0);
+				}
+			}
+			{
+				bool solid = neighborFlags[3] ? neighborFlags[3] & CHUNK_FLAG_SOLID : neighbors[3] && neighbors[3]->blocks[x + (0) * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				if (solid)
+				{
+					binaryGrid[(CHUNK_SIZE + 1) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
+					binaryGrid[(CHUNK_SIZE + 1) * CHUNK_SIZE_P + (z + 1) + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (x + 1);
+					binaryGrid[(z + 1) * CHUNK_SIZE_P + (x + 1) + 2 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (CHUNK_SIZE + 1);
+				}
+			}
+		}
+	}
+	for (int y = 0; y < CHUNK_SIZE; y++)
+	{
+		for (int x = 0; x < CHUNK_SIZE; x++)
+		{
+			{
+				bool solid = neighborFlags[4] ? neighborFlags[4] & CHUNK_FLAG_SOLID : neighbors[4] && neighbors[4]->blocks[x + y * CHUNK_SIZE + (CHUNK_SIZE - 1) * CHUNK_SIZE * CHUNK_SIZE].id;
+				if (solid)
+				{
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (0);
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (0) + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (x + 1);
+					binaryGrid[(0) * CHUNK_SIZE_P + (x + 1) + 2 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (y + 1);
+				}
+			}
+			{
+				bool solid = neighborFlags[5] ? neighborFlags[5] & CHUNK_FLAG_SOLID : neighbors[5] && neighbors[5]->blocks[x + y * CHUNK_SIZE + 0 * CHUNK_SIZE * CHUNK_SIZE].id;
+				if (solid)
+				{
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (CHUNK_SIZE + 1);
+					binaryGrid[(y + 1) * CHUNK_SIZE_P + (CHUNK_SIZE + 1) + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (x + 1);
+					binaryGrid[(CHUNK_SIZE + 1) * CHUNK_SIZE_P + (x + 1) + 2 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (y + 1);
+				}
+			}
+		}
+	}
+
+	/*
 	for (int z = 0; z < CHUNK_SIZE_P; z++)
 	{
+		int zneighbor = z == 0 ? -1 : z == CHUNK_SIZE_P - 1 ? 1 : 0;
 		for (int y = 0; y < CHUNK_SIZE_P; y++)
 		{
+			int yneighbor = y == 0 ? -1 : y == CHUNK_SIZE_P - 1 ? 1 : 0;
 			for (int x = 0; x < CHUNK_SIZE_P; x++)
 			{
-				const BlockData* block = chunk->getBlockData(x - 1, y - 1, z - 1);
-				bool solid = block && block->id;
-				if (!block) solid = GetSolidAtWorldPos(chunk->position + ivec3(x - 1, y - 1, z - 1) * chunk->chunkScale, chunk->lod, game);
+				int xneighbor = x == 0 ? -1 : x == CHUNK_SIZE_P - 1 ? 1 : 0;
+
+				if ((xneighbor != 0) + (yneighbor != 0) + (zneighbor != 0) > 1)
+					continue;
+
+				bool solid;
+				if (x == 0) solid = neighborFlags[0] ? neighborFlags[0] & CHUNK_FLAG_SOLID : neighbors[0] && neighbors[0]->getBlockData(CHUNK_SIZE - 1, y - 1, z - 1)->id;
+				else if (x == CHUNK_SIZE_P - 1) solid = neighborFlags[1] ? neighborFlags[1] & CHUNK_FLAG_SOLID : neighbors[1] && neighbors[1]->getBlockData(0, y - 1, z - 1)->id;
+				else if (y == 0) solid = neighborFlags[2] ? neighborFlags[2] & CHUNK_FLAG_SOLID : neighbors[2] && neighbors[2]->getBlockData(x - 1, CHUNK_SIZE - 1, z - 1)->id;
+				else if (y == CHUNK_SIZE_P - 1) solid = neighborFlags[3] ? neighborFlags[3] & CHUNK_FLAG_SOLID : neighbors[3] && neighbors[3]->getBlockData(x - 1, 0, z - 1)->id;
+				else if (z == 0) solid = neighborFlags[4] ? neighborFlags[4] & CHUNK_FLAG_SOLID : neighbors[4] && neighbors[4]->getBlockData(x - 1, y - 1, CHUNK_SIZE - 1)->id;
+				else if (z == CHUNK_SIZE_P - 1) solid = neighborFlags[5] ? neighborFlags[5] & CHUNK_FLAG_SOLID : neighbors[5] && neighbors[5]->getBlockData(x - 1, y - 1, 0)->id;
+				else solid = chunk->getBlockData(x - 1, y - 1, z - 1)->id;
+				//if (!block) solid = GetSolidAtWorldPos(chunk->position + ivec3(x - 1, y - 1, z - 1) * chunk->chunkScale, chunk->lod, game);
 				if (solid)
 				{
 					binaryGrid[y * CHUNK_SIZE_P + x + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << z;
@@ -190,6 +295,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 			}
 		}
 	}
+	*/
 
 	// binary face culling
 	for (int axis = 0; axis < 3; axis++)
@@ -222,7 +328,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 
 					column &= ~(1 << slice);
 
-					slicesZY[slice * CHUNK_SIZE + j] |= 1 << i;
+					const BlockData* block = chunk->getBlockData(slice, i, j);
+
+					mesher->greedyPlanes[block->id].slicesZY[slice * CHUNK_SIZE + j] |= 1 << i;
 				}
 			}
 			{ // x+ face
@@ -237,7 +345,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 
 					column &= ~(1 << slice);
 
-					slicesZY[slice * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE] |= 1 << i;
+					const BlockData* block = chunk->getBlockData(slice, i, j);
+
+					mesher->greedyPlanes[block->id].slicesZY[CHUNK_SIZE * CHUNK_SIZE + slice * CHUNK_SIZE + j] |= 1 << i;
 				}
 			}
 			{ // y- face
@@ -252,7 +362,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 
 					column &= ~(1 << slice);
 
-					slicesXZ[slice * CHUNK_SIZE + j] |= 1 << i;
+					const BlockData* block = chunk->getBlockData(j, slice, i);
+
+					mesher->greedyPlanes[block->id].slicesXZ[slice * CHUNK_SIZE + j] |= 1 << i;
 				}
 			}
 			{ // y+ face
@@ -267,7 +379,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 
 					column &= ~(1 << slice);
 
-					slicesXZ[slice * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE] |= 1 << i;
+					const BlockData* block = chunk->getBlockData(j, slice, i);
+
+					mesher->greedyPlanes[block->id].slicesXZ[slice * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE] |= 1 << i;
 				}
 			}
 			{ // z- face
@@ -282,7 +396,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 
 					column &= ~(1 << slice);
 
-					slicesXY[slice * CHUNK_SIZE + j] |= 1 << i;
+					const BlockData* block = chunk->getBlockData(j, i, slice);
+
+					mesher->greedyPlanes[block->id].slicesXY[slice * CHUNK_SIZE + j] |= 1 << i;
 				}
 			}
 			{ // z+ face
@@ -297,246 +413,295 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 
 					column &= ~(1 << slice);
 
-					slicesXY[slice * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE] |= 1 << i;
+					const BlockData* block = chunk->getBlockData(j, i, slice);
+
+					mesher->greedyPlanes[block->id].slicesXY[slice * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE] |= 1 << i;
 				}
 			}
 		}
 	}
 
+	uint64_t before = SDL_GetTicksNS();
+
 	// face generation
 	mesher->vertexOffsets[0] = mesher->numVertices;
-	for (int i = 0; i < CHUNK_SIZE; i++)
+	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
 	{
-		for (int j = 0; j < CHUNK_SIZE; j++)
+		uint8_t blockType = it->first;
+		GreedyPlane* greedyPlane = &it->second;
+
+		for (int i = 0; i < CHUNK_SIZE; i++)
 		{
-			uint32_t column = slicesZY[i * CHUNK_SIZE + j];
-			int y = 0;
-			while (y < CHUNK_SIZE)
+			for (int j = 0; j < CHUNK_SIZE; j++)
 			{
-				y += TrailingZeros(column >> y);
-				if (y >= CHUNK_SIZE)
-					continue;
+				uint32_t column = greedyPlane->slicesZY[i * CHUNK_SIZE + j];
 
-				uint32_t sy = TrailingOnes(column >> y);
-
-				uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-				uint32_t mask = trimmedMask << y;
-
-				int sx = 1;
-				while (j + sx < CHUNK_SIZE)
+				int y = 0;
+				while (y < CHUNK_SIZE)
 				{
-					uint32_t trimmedNextCol = (slicesZY[i * CHUNK_SIZE + j + sx] >> y) & trimmedMask;
-					if (trimmedNextCol != trimmedMask)
-						break;
+					y += TrailingZeros(column >> y);
+					if (y >= CHUNK_SIZE)
+						continue;
 
-					slicesZY[i * CHUNK_SIZE + j + sx] &= ~mask;
-					sx++;
+					uint32_t sy = TrailingOnes(column >> y);
+
+					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+					uint32_t mask = trimmedMask << y;
+
+					int sx = 1;
+					while (j + sx < CHUNK_SIZE)
+					{
+						uint32_t trimmedNextCol = (greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx] >> y) & trimmedMask;
+						if (trimmedNextCol != trimmedMask)
+							break;
+
+						greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx] &= ~mask;
+						sx++;
+					}
+
+					ivec3 position = ivec3(i, y, j);
+
+					ChunkBuilderAddFace(mesher, position, sx, sy, 0, (uint8_t)blockType);
+
+					y += sy;
 				}
-
-				ivec3 position = ivec3(i, y, j);
-
-				ChunkBuilderAddFace(mesher, position, sx, sy, 0, chunk->getBlockData(position)->id);
-
-				y += sy;
 			}
 		}
 	}
 	mesher->vertexCounts[0] = mesher->numVertices - mesher->vertexOffsets[0];
 
 	mesher->vertexOffsets[1] = mesher->numVertices;
-	for (int i = 0; i < CHUNK_SIZE; i++)
+	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
 	{
-		for (int j = 0; j < CHUNK_SIZE; j++)
+		uint8_t blockType = it->first;
+		GreedyPlane* greedyPlane = &it->second;
+
+		for (int i = 0; i < CHUNK_SIZE; i++)
 		{
-			uint32_t column = slicesZY[i * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE];
-			int y = 0;
-			while (y < CHUNK_SIZE)
+			for (int j = 0; j < CHUNK_SIZE; j++)
 			{
-				y += TrailingZeros(column >> y);
-				if (y >= CHUNK_SIZE)
-					continue;
+				uint32_t column = greedyPlane->slicesZY[i * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE];
 
-				uint32_t sy = TrailingOnes(column >> y);
-
-				uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-				uint32_t mask = trimmedMask << y;
-
-				int sx = 1;
-				while (j + sx < CHUNK_SIZE)
+				int y = 0;
+				while (y < CHUNK_SIZE)
 				{
-					uint32_t trimmedNextCol = (slicesZY[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
-					if (trimmedNextCol != trimmedMask)
-						break;
+					y += TrailingZeros(column >> y);
+					if (y >= CHUNK_SIZE)
+						continue;
 
-					slicesZY[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
-					sx++;
+					uint32_t sy = TrailingOnes(column >> y);
+
+					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+					uint32_t mask = trimmedMask << y;
+
+					int sx = 1;
+					while (j + sx < CHUNK_SIZE)
+					{
+						uint32_t trimmedNextCol = (greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
+						if (trimmedNextCol != trimmedMask)
+							break;
+
+						greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
+						sx++;
+					}
+
+					ivec3 position = ivec3(i, y, j);
+
+					ChunkBuilderAddFace(mesher, position, sx, sy, 1, (uint8_t)blockType);
+
+					y += sy;
 				}
-
-				ivec3 position = ivec3(i, y, j);
-
-				ChunkBuilderAddFace(mesher, position, sx, sy, 1, chunk->getBlockData(position)->id);
-
-				y += sy;
 			}
 		}
 	}
 	mesher->vertexCounts[1] = mesher->numVertices - mesher->vertexOffsets[1];
 
 	mesher->vertexOffsets[2] = mesher->numVertices;
-	for (int i = 0; i < CHUNK_SIZE; i++)
+	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
 	{
-		for (int j = 0; j < CHUNK_SIZE; j++)
+		uint8_t blockType = it->first;
+		GreedyPlane* greedyPlane = &it->second;
+
+		for (int i = 0; i < CHUNK_SIZE; i++)
 		{
-			uint32_t column = slicesXZ[i * CHUNK_SIZE + j];
-			int y = 0;
-			while (y < CHUNK_SIZE)
+			for (int j = 0; j < CHUNK_SIZE; j++)
 			{
-				y += TrailingZeros(column >> y);
-				if (y >= CHUNK_SIZE)
-					continue;
+				uint32_t column = greedyPlane->slicesXZ[i * CHUNK_SIZE + j];
 
-				uint32_t sy = TrailingOnes(column >> y);
-
-				uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-				uint32_t mask = trimmedMask << y;
-
-				int sx = 1;
-				while (j + sx < CHUNK_SIZE)
+				int y = 0;
+				while (y < CHUNK_SIZE)
 				{
-					uint32_t trimmedNextCol = (slicesXZ[i * CHUNK_SIZE + j + sx] >> y) & trimmedMask;
-					if (trimmedNextCol != trimmedMask)
-						break;
+					y += TrailingZeros(column >> y);
+					if (y >= CHUNK_SIZE)
+						continue;
 
-					slicesXZ[i * CHUNK_SIZE + j + sx] &= ~mask;
-					sx++;
+					uint32_t sy = TrailingOnes(column >> y);
+
+					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+					uint32_t mask = trimmedMask << y;
+
+					int sx = 1;
+					while (j + sx < CHUNK_SIZE)
+					{
+						uint32_t trimmedNextCol = (greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx] >> y) & trimmedMask;
+						if (trimmedNextCol != trimmedMask)
+							break;
+
+						greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx] &= ~mask;
+						sx++;
+					}
+
+					ivec3 position = ivec3(j, i, y);
+
+					ChunkBuilderAddFace(mesher, position, sx, sy, 2, (uint8_t)blockType);
+
+					y += sy;
 				}
-
-				ivec3 position = ivec3(j, i, y);
-
-				ChunkBuilderAddFace(mesher, position, sx, sy, 2, chunk->getBlockData(position)->id);
-
-				y += sy;
 			}
 		}
 	}
 	mesher->vertexCounts[2] = mesher->numVertices - mesher->vertexOffsets[2];
 
 	mesher->vertexOffsets[3] = mesher->numVertices;
-	for (int i = 0; i < CHUNK_SIZE; i++)
+	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
 	{
-		for (int j = 0; j < CHUNK_SIZE; j++)
+		uint8_t blockType = it->first;
+		GreedyPlane* greedyPlane = &it->second;
+
+		for (int i = 0; i < CHUNK_SIZE; i++)
 		{
-			uint32_t column = slicesXZ[i * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE];
-			int y = 0;
-			while (y < CHUNK_SIZE)
+			for (int j = 0; j < CHUNK_SIZE; j++)
 			{
-				y += TrailingZeros(column >> y);
-				if (y >= CHUNK_SIZE)
-					continue;
+				uint32_t column = greedyPlane->slicesXZ[i * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE];
 
-				uint32_t sy = TrailingOnes(column >> y);
-
-				uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-				uint32_t mask = trimmedMask << y;
-
-				int sx = 1;
-				while (j + sx < CHUNK_SIZE)
+				int y = 0;
+				while (y < CHUNK_SIZE)
 				{
-					uint32_t trimmedNextCol = (slicesXZ[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
-					if (trimmedNextCol != trimmedMask)
-						break;
+					y += TrailingZeros(column >> y);
+					if (y >= CHUNK_SIZE)
+						continue;
 
-					slicesXZ[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
-					sx++;
+					uint32_t sy = TrailingOnes(column >> y);
+
+					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+					uint32_t mask = trimmedMask << y;
+
+					int sx = 1;
+					while (j + sx < CHUNK_SIZE)
+					{
+						uint32_t trimmedNextCol = (greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
+						if (trimmedNextCol != trimmedMask)
+							break;
+
+						greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
+						sx++;
+					}
+
+					ivec3 position = ivec3(j, i, y);
+
+					ChunkBuilderAddFace(mesher, position, sx, sy, 3, (uint8_t)blockType);
+
+					y += sy;
 				}
-
-				ivec3 position = ivec3(j, i, y);
-
-				ChunkBuilderAddFace(mesher, position, sx, sy, 3, chunk->getBlockData(position)->id);
-
-				y += sy;
 			}
 		}
 	}
 	mesher->vertexCounts[3] = mesher->numVertices - mesher->vertexOffsets[3];
 
 	mesher->vertexOffsets[4] = mesher->numVertices;
-	for (int z = 0; z < CHUNK_SIZE; z++)
+	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
 	{
-		for (int x = 0; x < CHUNK_SIZE; x++)
+		uint8_t blockType = it->first;
+		GreedyPlane* greedyPlane = &it->second;
+
+		for (int z = 0; z < CHUNK_SIZE; z++)
 		{
-			uint32_t column = slicesXY[z * CHUNK_SIZE + x];
-			int y = 0;
-			while (y < CHUNK_SIZE)
+			for (int x = 0; x < CHUNK_SIZE; x++)
 			{
-				y += TrailingZeros(column >> y);
-				if (y >= CHUNK_SIZE)
-					continue;
+				uint32_t column = greedyPlane->slicesXY[z * CHUNK_SIZE + x];
 
-				uint32_t sy = TrailingOnes(column >> y);
-
-				uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-				uint32_t mask = trimmedMask << y;
-
-				int sx = 1;
-				while (x + sx < CHUNK_SIZE)
+				int y = 0;
+				while (y < CHUNK_SIZE)
 				{
-					uint32_t trimmedNextCol = (slicesXY[z * CHUNK_SIZE + x + sx] >> y) & trimmedMask;
-					if (trimmedNextCol != trimmedMask)
-						break;
+					y += TrailingZeros(column >> y);
+					if (y >= CHUNK_SIZE)
+						continue;
 
-					slicesXY[z * CHUNK_SIZE + x + sx] &= ~mask;
-					sx++;
+					uint32_t sy = TrailingOnes(column >> y);
+
+					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+					uint32_t mask = trimmedMask << y;
+
+					int sx = 1;
+					while (x + sx < CHUNK_SIZE)
+					{
+						uint32_t trimmedNextCol = (greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx] >> y) & trimmedMask;
+						if (trimmedNextCol != trimmedMask)
+							break;
+
+						greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx] &= ~mask;
+						sx++;
+					}
+
+					ivec3 position = ivec3(x, y, z);
+
+					ChunkBuilderAddFace(mesher, position, sx, sy, 4, (uint8_t)blockType);
+
+					y += sy;
 				}
-
-				ivec3 position = ivec3(x, y, z);
-
-				ChunkBuilderAddFace(mesher, position, sx, sy, 4, chunk->getBlockData(position)->id);
-
-				y += sy;
 			}
 		}
 	}
 	mesher->vertexCounts[4] = mesher->numVertices - mesher->vertexOffsets[4];
 
 	mesher->vertexOffsets[5] = mesher->numVertices;
-	for (int z = 0; z < CHUNK_SIZE; z++)
+	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
 	{
-		for (int x = 0; x < CHUNK_SIZE; x++)
+		uint8_t blockType = it->first;
+		GreedyPlane* greedyPlane = &it->second;
+
+		for (int z = 0; z < CHUNK_SIZE; z++)
 		{
-			uint32_t column = slicesXY[z * CHUNK_SIZE + x + CHUNK_SIZE * CHUNK_SIZE];
-			int y = 0;
-			while (y < CHUNK_SIZE)
+			for (int x = 0; x < CHUNK_SIZE; x++)
 			{
-				y += TrailingZeros(column >> y);
-				if (y >= CHUNK_SIZE)
-					continue;
+				uint32_t column = greedyPlane->slicesXY[z * CHUNK_SIZE + x + CHUNK_SIZE * CHUNK_SIZE];
 
-				uint32_t sy = TrailingOnes(column >> y);
-
-				uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-				uint32_t mask = trimmedMask << y;
-
-				int sx = 1;
-				while (x + sx < CHUNK_SIZE)
+				int y = 0;
+				while (y < CHUNK_SIZE)
 				{
-					uint32_t trimmedNextCol = (slicesXY[z * CHUNK_SIZE + x + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
-					if (trimmedNextCol != trimmedMask)
-						break;
+					y += TrailingZeros(column >> y);
+					if (y >= CHUNK_SIZE)
+						continue;
 
-					slicesXY[z * CHUNK_SIZE + x + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
-					sx++;
+					uint32_t sy = TrailingOnes(column >> y);
+
+					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+					uint32_t mask = trimmedMask << y;
+
+					int sx = 1;
+					while (x + sx < CHUNK_SIZE)
+					{
+						uint32_t trimmedNextCol = (greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
+						if (trimmedNextCol != trimmedMask)
+							break;
+
+						greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
+						sx++;
+					}
+
+					ivec3 position = ivec3(x, y, z);
+
+					ChunkBuilderAddFace(mesher, position, sx, sy, 5, (uint8_t)blockType);
+
+					y += sy;
 				}
-
-				ivec3 position = ivec3(x, y, z);
-
-				ChunkBuilderAddFace(mesher, position, sx, sy, 5, chunk->getBlockData(position)->id);
-
-				y += sy;
 			}
 		}
 	}
 	mesher->vertexCounts[5] = mesher->numVertices - mesher->vertexOffsets[5];
+
+	uint64_t after = SDL_GetTicksNS();
+	//SDL_Log("meshing %.2f ms", (after - before) / 1e6f);
 }
 
 void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
@@ -555,18 +720,32 @@ void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 	*/
 
 	mesher->numVertices = 0;
-
-	uint64_t beforeMeshing = SDL_GetTicksNS();
+	new(&mesher->greedyPlanes)std::map<uint8_t, GreedyPlane>();
+	//mesher->greedyPlanes.clear();
 
 	//chunk->vertexOffset = 0;
 	//for (int i = 0; i < 6; i++)
 	//	BuildGreedyFaces(mesher, i, chunk, allocator, game);
 	//chunk->vertexCount = mesher->numVertices;
 
-	GreedyMesh(mesher, chunk, game);
+	const Chunk* neighbors[6];
+	uint32_t neighborFlags[6];
 
-	uint64_t afterMeshing = SDL_GetTicksNS();
-	//SDL_Log("meshing %.2f ms", (afterMeshing - beforeMeshing) / 1e6f);
+	neighbors[0] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Left * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighbors[1] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Right * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighbors[2] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Down * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighbors[3] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Up * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighbors[4] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Forward * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighbors[5] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Back * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+
+	neighborFlags[0] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Left * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighborFlags[1] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Right * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighborFlags[2] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Down * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighborFlags[3] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Up * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighborFlags[4] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Forward * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighborFlags[5] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Back * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+
+	GreedyMesh(mesher, chunk, neighbors, neighborFlags, game);
 
 	/*
 	for (int i = 0; i < CHUNK_SIZE; i++)

@@ -8,6 +8,15 @@
 
 #include "math/Vector.h"
 
+#include <map>
+
+
+struct GreedyPlane
+{
+	uint32_t slicesXY[CHUNK_SIZE * CHUNK_SIZE * 2] = {};
+	uint32_t slicesZY[CHUNK_SIZE * CHUNK_SIZE * 2] = {};
+	uint32_t slicesXZ[CHUNK_SIZE * CHUNK_SIZE * 2] = {};
+};
 
 struct ChunkMesher
 {
@@ -17,11 +26,13 @@ struct ChunkMesher
 
 	uint64_t faceMasks[CHUNK_SIZE_P * CHUNK_SIZE_P * 6];
 
-	uint32_t slicesXY[CHUNK_SIZE * CHUNK_SIZE * 2];
-	uint32_t slicesZY[CHUNK_SIZE * CHUNK_SIZE * 2];
-	uint32_t slicesXZ[CHUNK_SIZE * CHUNK_SIZE * 2];
+	std::map<uint8_t, GreedyPlane> greedyPlanes;
 
-	#define CHUNK_MESHER_VERTEX_CAPACITY (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 6 * 4 / 2)
+	//uint32_t slicesXY[CHUNK_SIZE * CHUNK_SIZE * 2 * 256];
+	//uint32_t slicesZY[CHUNK_SIZE * CHUNK_SIZE * 2 * 256];
+	//uint32_t slicesXZ[CHUNK_SIZE * CHUNK_SIZE * 2 * 256];
+
+#define CHUNK_MESHER_VERTEX_CAPACITY (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 6 * 4 / 2)
 	uint32_t vertexData[CHUNK_MESHER_VERTEX_CAPACITY];
 	int numVertices;
 	//int vertexCapacity;
@@ -38,4 +49,4 @@ void InitChunkMesher(ChunkMesher* mesher);
 //void ChunkBuilderCreateBuffers(ChunkMesher* mesher, InstanceBuffer** instanceBuffer);
 //void ChunkBuilderCreateBuffers(ChunkMesher* mesher, VertexBuffer** vertexBuffer, IndexBuffer** indexBuffer);
 
-void ChunkMesherRun(ChunkMesher* mesher, const struct Chunk* chunk, struct GameState* game);
+void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, struct GameState* game);

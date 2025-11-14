@@ -1,6 +1,6 @@
 #include "Simplex.h"
 
-#include <math.h>
+#include <SDL3/SDL.h>
 
 
 const int grad3[12][3] =
@@ -68,12 +68,7 @@ const int p[] =
 	254, 138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180
 };
 
-int perm[512] =
-{
-	0
-};
-
-const int simplex[64][4] =
+const int _simplex[64][4] =
 {
 	{ 0, 1, 2, 3 },
 	{ 0, 1, 3, 2 },
@@ -142,112 +137,37 @@ const int simplex[64][4] =
 };
 
 
-static bool initialized = false;
 
-
-void SimplexInit()
+void InitSimplex(Simplex* simplex)
 {
 	for (int i = 0; i < 512; i++)
-		perm[i] = p[i & 255];
+		simplex->perm[i] = p[i & 255];
 }
 
-double Dot(const int* g, double x, double y)
+static float Dot(const int* g, float x, float y)
 {
 	return g[0] * x + g[1] * y;
 }
 
-double Dot(const int* g, double x, double y, double z)
+static float Dot(const int* g, float x, float y, float z)
 {
 	return g[0] * x + g[1] * y + g[2] * z;
 }
 
-double Dot(const int* g, double x, double y, double z, double w)
+static float Dot(const int* g, float x, float y, float z, float w)
 {
 	return g[0] * x + g[1] * y + g[2] * z + g[3] * w;
 }
 
-double Simplex2d(double xin, double yin)
-{
-	double n0, n1, n2; // Noise contributions from the three corners
-							   // Skew the input space to determine which simplex cell we're in
-	double F2 = 0.5 * (sqrt(3.0) - 1.0);
-	double s = (xin + yin) * F2; // Hairy factor for 2D
-	int i = (int)floor((float)(xin + s));
-	int j = (int)floor((float)(yin + s));
-	double G2 = (3.0 - sqrt(3.0)) / 6.0;
-	double t = (i + j) * G2;
-	double X0 = i - t; // Unskew the cell origin back to (x,y) space
-	double Y0 = j - t;
-	double x0 = xin - X0; // The x,y distances from the cell origin
-	double y0 = yin - Y0;
-	// For the 2D case, the simplex shape is an equilateral triangle.
-	// Determine which simplex we are in.
-	int i1, j1; // Offsets for second (middle) corner of simplex in (i,j) coords
-	if (x0 > y0)
-	{
-		i1 = 1;
-		j1 = 0;
-	} // lower triangle, XY order: (0,0)->(1,0)->(1,1)
-	else
-	{
-		i1 = 0;
-		j1 = 1;
-	} // upper triangle, YX order: (0,0)->(0,1)->(1,1)
-	  // A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and
-	  // a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where
-	  // c = (3-sqrt(3))/6
-	double x1 = x0 - i1 + G2; // Offsets for middle corner in (x,y) unskewed coords
-	double y1 = y0 - j1 + G2;
-	double x2 = x0 - 1.0 + 2.0 * G2; // Offsets for last corner in (x,y) unskewed coords
-	double y2 = y0 - 1.0 + 2.0 * G2;
-	// Work out the hashed gradient indices of the three simplex corners
-	int ii = i & 255;
-	int jj = j & 255;
-	int gi0 = perm[ii + perm[jj]] % 12;
-	int gi1 = perm[ii + i1 + perm[jj + j1]] % 12;
-	int gi2 = perm[ii + 1 + perm[jj + 1]] % 12;
-	// Calculate the contribution from the three corners
-	double t0 = 0.5 - x0 * x0 - y0 * y0;
-	if (t0 < 0) n0 = 0.0;
-	else
-	{
-		t0 *= t0;
-		n0 = t0 * t0 * Dot(grad3[gi0], x0, y0); // (x,y) of grad3 used for 2D gradient
-	}
-	double t1 = 0.5 - x1 * x1 - y1 * y1;
-	if (t1 < 0) n1 = 0.0;
-	else
-	{
-		t1 *= t1;
-		n1 = t1 * t1 * Dot(grad3[gi1], x1, y1);
-	}
-	double t2 = 0.5 - x2 * x2 - y2 * y2;
-	if (t2 < 0) n2 = 0.0;
-	else
-	{
-		t2 *= t2;
-		n2 = t2 * t2 * Dot(grad3[gi2], x2, y2);
-	}
-	// Add contributions from each corner to get the final noise value.
-	// The result is scaled to return values in the interval [-1,1].
-	return 70.0 * (n0 + n1 + n2);
-}
-
-float Simplex2f(float x, float y)
-{
-	return (float)Simplex2d(x, y);
-}
-
-/*
-float Simplex2f(float x, float y)
+float Simplex2f(Simplex* simplex, float x, float y)
 {
 	float n0, n1, n2; // Noise contributions from the three corners
-							   // Skew the input space to determine which simplex cell we're in
-	float F2 = 0.5f * (sqrtf(3.0f) - 1.0f);
+	// Skew the input space to determine which simplex cell we're in
+	float F2 = 0.5f * (SDL_sqrtf(3.0f) - 1.0f);
 	float s = (x + y) * F2; // Hairy factor for 2D
-	int i = (int)floorf((float)(x + s));
-	int j = (int)floorf((float)(y + s));
-	float G2 = (3.0f - sqrtf(3.0f)) / 6.0f;
+	int i = (int)SDL_floorf((float)(x + s));
+	int j = (int)SDL_floorf((float)(y + s));
+	float G2 = (3.0f - SDL_sqrtf(3.0f)) / 6.0f;
 	float t = (i + j) * G2;
 	float X0 = i - t; // Unskew the cell origin back to (x,y) space
 	float Y0 = j - t;
@@ -276,9 +196,9 @@ float Simplex2f(float x, float y)
 	// Work out the hashed gradient indices of the three simplex corners
 	int ii = i & 255;
 	int jj = j & 255;
-	int gi0 = perm[ii + perm[jj]] % 12;
-	int gi1 = perm[ii + i1 + perm[jj + j1]] % 12;
-	int gi2 = perm[ii + 1 + perm[jj + 1]] % 12;
+	int gi0 = simplex->perm[ii + simplex->perm[jj]] % 12;
+	int gi1 = simplex->perm[ii + i1 + simplex->perm[jj + j1]] % 12;
+	int gi2 = simplex->perm[ii + 1 + simplex->perm[jj + 1]] % 12;
 	// Calculate the contribution from the three corners
 	float t0 = 0.5f - x0 * x0 - y0 * y0;
 	if (t0 < 0) n0 = 0.0f;
@@ -305,17 +225,16 @@ float Simplex2f(float x, float y)
 	// The result is scaled to return values in the interval [-1,1].
 	return 70.0f * (n0 + n1 + n2);
 }
-*/
 
-float Simplex3f(float x, float y, float z)
+float Simplex3f(Simplex* simplex, float x, float y, float z)
 {
 	float n0, n1, n2, n3; // Noise contributions from the four corners
-								   // Skew the input space to determine which simplex cell we're in
+	// Skew the input space to determine which simplex cell we're in
 	float F3 = 1.0f / 3.0f;
 	float s = (x + y + z) * F3; // Very nice and simple skew factor for 3D
-	int i = (int)floorf((float)(x + s));
-	int j = (int)floorf((float)(y + s));
-	int k = (int)floorf((float)(z + s));
+	int i = (int)SDL_floorf((float)(x + s));
+	int j = (int)SDL_floorf((float)(y + s));
+	int k = (int)SDL_floorf((float)(z + s));
 	float G3 = 1.0f / 6.0f; // Very nice and simple unskew factor, too
 	float t = (i + j + k) * G3;
 	float X0 = i - t; // Unskew the cell origin back to (x,y,z) space
@@ -405,10 +324,10 @@ float Simplex3f(float x, float y, float z)
 	int ii = i & 255;
 	int jj = j & 255;
 	int kk = k & 255;
-	int gi0 = perm[ii + perm[jj + perm[kk]]] % 12;
-	int gi1 = perm[ii + i1 + perm[jj + j1 + perm[kk + k1]]] % 12;
-	int gi2 = perm[ii + i2 + perm[jj + j2 + perm[kk + k2]]] % 12;
-	int gi3 = perm[ii + 1 + perm[jj + 1 + perm[kk + 1]]] % 12;
+	int gi0 = simplex->perm[ii + simplex->perm[jj + simplex->perm[kk]]] % 12;
+	int gi1 = simplex->perm[ii + i1 + simplex->perm[jj + j1 + simplex->perm[kk + k1]]] % 12;
+	int gi2 = simplex->perm[ii + i2 + simplex->perm[jj + j2 + simplex->perm[kk + k2]]] % 12;
+	int gi3 = simplex->perm[ii + 1 + simplex->perm[jj + 1 + simplex->perm[kk + 1]]] % 12;
 	// Calculate the contribution from the four corners
 	float t0 = 0.6f - x0 * x0 - y0 * y0 - z0 * z0;
 	if (t0 < 0) n0 = 0.0f;
@@ -443,18 +362,18 @@ float Simplex3f(float x, float y, float z)
 	return 32.0f * (n0 + n1 + n2 + n3);
 }
 
-float Simplex4f(float x, float y, float z, float w)
+float Simplex4f(Simplex* simplex, float x, float y, float z, float w)
 {
 	// The skewing and unskewing factors are hairy again for the 4D case
-	float F4 = (sqrtf(5.0f) - 1.0f) / 4.0f;
-	float G4 = (5.0f - sqrtf(5.0f)) / 20.0f;
+	float F4 = (SDL_sqrtf(5.0f) - 1.0f) / 4.0f;
+	float G4 = (5.0f - SDL_sqrtf(5.0f)) / 20.0f;
 	float n0, n1, n2, n3, n4; // Noise contributions from the five corners
-							   // Skew the (x,y,z,w) space to determine which cell of 24 simplices we're in
+	// Skew the (x,y,z,w) space to determine which cell of 24 simplices we're in
 	float s = (x + y + z + w) * F4; // Factor for 4D skewing
-	int i = (int)floorf((float)(x + s));
-	int j = (int)floorf((float)(y + s));
-	int k = (int)floorf((float)(z + s));
-	int l = (int)floorf((float)(w + s));
+	int i = (int)SDL_floorf((float)(x + s));
+	int j = (int)SDL_floorf((float)(y + s));
+	int k = (int)SDL_floorf((float)(z + s));
+	int l = (int)SDL_floorf((float)(w + s));
 	float t = (i + j + k + l) * G4; // Factor for 4D unskewing
 	float X0 = i - t; // Unskew the cell origin back to (x,y,z,w) space
 	float Y0 = j - t;
@@ -482,25 +401,25 @@ float Simplex4f(float x, float y, float z, float w)
 	int i1, j1, k1, l1; // The integer offsets for the second simplex corner
 	int i2, j2, k2, l2; // The integer offsets for the third simplex corner
 	int i3, j3, k3, l3; // The integer offsets for the fourth simplex corner
-						// simplex[c] is a 4-vector with the numbers 0, 1, 2 and 3 in some order.
-						// Many values of c will never occur, since e.g. x>y>z>w makes x<z, y<w and x<w
-						// impossible. Only the 24 indices which have non-zero entries make any sense.
-						// We use a thresholding to set the coordinates in turn from the largest magnitude.
-						// The number 3 in the "simplex" array is at the position of the largest coordinate.
-	i1 = simplex[c][0] >= 3 ? 1 : 0;
-	j1 = simplex[c][1] >= 3 ? 1 : 0;
-	k1 = simplex[c][2] >= 3 ? 1 : 0;
-	l1 = simplex[c][3] >= 3 ? 1 : 0;
+	// simplex[c] is a 4-vector with the numbers 0, 1, 2 and 3 in some order.
+	// Many values of c will never occur, since e.g. x>y>z>w makes x<z, y<w and x<w
+	// impossible. Only the 24 indices which have non-zero entries make any sense.
+	// We use a thresholding to set the coordinates in turn from the largest magnitude.
+	// The number 3 in the "simplex" array is at the position of the largest coordinate.
+	i1 = _simplex[c][0] >= 3 ? 1 : 0;
+	j1 = _simplex[c][1] >= 3 ? 1 : 0;
+	k1 = _simplex[c][2] >= 3 ? 1 : 0;
+	l1 = _simplex[c][3] >= 3 ? 1 : 0;
 	// The number 2 in the "simplex" array is at the second largest coordinate.
-	i2 = simplex[c][0] >= 2 ? 1 : 0;
-	j2 = simplex[c][1] >= 2 ? 1 : 0;
-	k2 = simplex[c][2] >= 2 ? 1 : 0;
-	l2 = simplex[c][3] >= 2 ? 1 : 0;
+	i2 = _simplex[c][0] >= 2 ? 1 : 0;
+	j2 = _simplex[c][1] >= 2 ? 1 : 0;
+	k2 = _simplex[c][2] >= 2 ? 1 : 0;
+	l2 = _simplex[c][3] >= 2 ? 1 : 0;
 	// The number 1 in the "simplex" array is at the second smallest coordinate.
-	i3 = simplex[c][0] >= 1 ? 1 : 0;
-	j3 = simplex[c][1] >= 1 ? 1 : 0;
-	k3 = simplex[c][2] >= 1 ? 1 : 0;
-	l3 = simplex[c][3] >= 1 ? 1 : 0;
+	i3 = _simplex[c][0] >= 1 ? 1 : 0;
+	j3 = _simplex[c][1] >= 1 ? 1 : 0;
+	k3 = _simplex[c][2] >= 1 ? 1 : 0;
+	l3 = _simplex[c][3] >= 1 ? 1 : 0;
 	// The fifth corner has all coordinate offsets = 1, so no need to look that up.
 	float x1 = x0 - i1 + G4; // Offsets for second corner in (x,y,z,w) coords
 	float y1 = y0 - j1 + G4;
@@ -523,11 +442,11 @@ float Simplex4f(float x, float y, float z, float w)
 	int jj = j & 255;
 	int kk = k & 255;
 	int ll = l & 255;
-	int gi0 = perm[ii + perm[jj + perm[kk + perm[ll]]]] % 32;
-	int gi1 = perm[ii + i1 + perm[jj + j1 + perm[kk + k1 + perm[ll + l1]]]] % 32;
-	int gi2 = perm[ii + i2 + perm[jj + j2 + perm[kk + k2 + perm[ll + l2]]]] % 32;
-	int gi3 = perm[ii + i3 + perm[jj + j3 + perm[kk + k3 + perm[ll + l3]]]] % 32;
-	int gi4 = perm[ii + 1 + perm[jj + 1 + perm[kk + 1 + perm[ll + 1]]]] % 32;
+	int gi0 = simplex->perm[ii + simplex->perm[jj + simplex->perm[kk + simplex->perm[ll]]]] % 32;
+	int gi1 = simplex->perm[ii + i1 + simplex->perm[jj + j1 + simplex->perm[kk + k1 + simplex->perm[ll + l1]]]] % 32;
+	int gi2 = simplex->perm[ii + i2 + simplex->perm[jj + j2 + simplex->perm[kk + k2 + simplex->perm[ll + l2]]]] % 32;
+	int gi3 = simplex->perm[ii + i3 + simplex->perm[jj + j3 + simplex->perm[kk + k3 + simplex->perm[ll + l3]]]] % 32;
+	int gi4 = simplex->perm[ii + 1 + simplex->perm[jj + 1 + simplex->perm[kk + 1 + simplex->perm[ll + 1]]]] % 32;
 	// Calculate the contribution from the five corners
 	float t0 = 0.6f - x0 * x0 - y0 * y0 - z0 * z0 - w0 * w0;
 	if (t0 < 0) n0 = 0.0f;
@@ -566,34 +485,4 @@ float Simplex4f(float x, float y, float z, float w)
 	}
 	// Sum up and scale the result to cover the range [-1,1]
 	return 27.0f * (n0 + n1 + n2 + n3 + n4);
-}
-
-Simplex::Simplex(uint32_t seed)
-	: seed(seed)
-{
-	if (!initialized)
-	{
-		initialized = true;
-		SimplexInit();
-	}
-}
-
-float Simplex::sample1f(float x)
-{
-	return Simplex2f(x + (float)seed / UINT32_MAX * 100.0f, 0.0);
-}
-
-float Simplex::sample2f(float x, float y)
-{
-	return Simplex2f(x - (float)seed / UINT32_MAX * 100.0f, y + (float)seed / UINT32_MAX * 100.0f);
-}
-
-float Simplex::sample3f(float x, float y, float z)
-{
-	return Simplex3f(x + (float)seed / UINT32_MAX * 100.0f, y - (float)seed / UINT32_MAX * 100.0f, z + (float)seed / UINT32_MAX * 100.0f);
-}
-
-float Simplex::sample4f(float x, float y, float z, float w)
-{
-	return Simplex4f(x - (float)seed / UINT32_MAX * 100.0f, y + (float)seed / UINT32_MAX * 100.0f, z - (float)seed / UINT32_MAX * 100.0f, w + (float)seed / UINT32_MAX * 100.0f);
 }

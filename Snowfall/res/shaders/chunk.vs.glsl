@@ -4,15 +4,15 @@ layout (location = 0) in uint in_data;
 
 layout (location = 0) out vec3 v_position;
 layout (location = 1) out vec3 v_normal;
-layout (location = 2) out vec3 v_color;
-layout (location = 3) out vec3 v_localpos;
+layout (location = 2) out vec3 v_localpos;
+layout (location = 3) out flat uint v_color;
+
+layout(set = 0, binding = 0) readonly buffer ChunkData {
+	ivec4 chunkData[];
+};
 
 layout(std140, set = 1, binding = 0) uniform UniformBlock {
     mat4 pv;
-};
-
-layout(std140, set = 0, binding = 0) readonly buffer ChunkData {
-	ivec4 chunkData[];
 };
 
 
@@ -74,16 +74,6 @@ uint hash(uint x)
     return x;
 }
 
-vec3 getColorFromID(uint id)
-{
-	return vec3(0.3, 0.3, 0.3);
-	//uint rgba = hash(id);
-	//uint r = rgba & 0xFF;
-	//uint g = (rgba & 0xFF00) >> 8;
-	//uint b = (rgba & 0xFF0000) >> 16;
-	//return vec3(r / 255.0, g / 255.0, b / 255.0);
-}
-
 void main()
 {
 	uint x = in_data & 0x1F;
@@ -131,6 +121,6 @@ void main()
 
 	v_position = worldPosition;
 	v_normal = normals[face];
-	v_color = getColorFromID(color);
 	v_localpos = localPos;
+	v_color = color;
 }

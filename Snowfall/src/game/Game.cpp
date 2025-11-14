@@ -58,12 +58,12 @@ Chunk* GetChunkAtWorldPosWithLOD(ivec3 position, int lod, GameState* game)
 	return nullptr;
 }
 
-uint32_t GetChunkFlagsAtWorldPos(ivec3 position, int lod, GameState* game)
+uint8_t GetChunkFlagsAtWorldPos(ivec3 position, int lod, GameState* game)
 {
 	int gridIdx = GetChunkGridIdxFromPosition(position, lod);
 	if (gridIdx != -1)
 	{
-		uint32_t flags = game->lods[lod].chunkFlags[gridIdx];
+		uint8_t flags = game->lods[lod].chunkFlags[gridIdx];
 		return flags;
 	}
 	return 0;
@@ -147,6 +147,12 @@ static int ChunkGeneratorMain(void* ptr)
 	InitChunkMesher(&data->mesher); // we divide by 2 since in the worst case scenario only every 2nd block is solid
 	data->mutex = SDL_CreateMutex();
 
+	SDL_GPUTransferBufferCreateInfo transferBufferInfo = {};
+	transferBufferInfo.size = CHUNK_VERTEX_BUFFER_SIZE;
+	transferBufferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+	data->transferBuffer = SDL_CreateGPUTransferBuffer(device, &transferBufferInfo);
+	data->mappedBuffer = SDL_MapGPUTransferBuffer(device, data->transferBuffer, false);
+
 	data->running = true;
 	while (data->running)
 	{
@@ -170,9 +176,14 @@ static int ChunkGeneratorMain(void* ptr)
 		}
 		else
 		{
-			SDL_Delay(1);
+			SDL_DelayPrecise(1000);
 		}
 	}
+
+	SDL_UnmapGPUTransferBuffer(device, data->transferBuffer);
+	data->mappedBuffer = nullptr;
+
+	SDL_ReleaseGPUTransferBuffer(device, data->transferBuffer);
 
 	return 0;
 }
@@ -243,6 +254,7 @@ void GameInit()
 	game->chunkVertexBuffer = CreateVertexBuffer(MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE, &chunkBufferLayouts[0], nullptr, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE * sizeof(uint32_t), cmdBuffer);
 	game->chunkStorageBuffer = CreateStorageBuffer(nullptr, MAX_LOADED_CHUNKS * 6 * sizeof(ChunkData), cmdBuffer);
 	game->chunkDrawBuffer = CreateIndirectBuffer(MAX_LOADED_CHUNKS * 6, false);
+	game->chunkPalette = LoadTexture("res/textures/palette.png.bin", cmdBuffer);
 
 	game->lightingShader = LoadGraphicsShader("res/shaders/lighting.vs.glsl.bin", "res/shaders/lighting.fs.glsl.bin");
 
@@ -276,7 +288,7 @@ void GameInit()
 	InitScreenQuad(&game->screenQuad, cmdBuffer);
 
 	SDL_GPUSamplerCreateInfo samplerInfo = {};
-	game->screenQuadSampler = SDL_CreateGPUSampler(device, &samplerInfo);
+	game->defaultSampler = SDL_CreateGPUSampler(device, &samplerInfo);
 
 	InitChunkAllocator(&game->chunkAllocator, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE);
 
@@ -392,6 +404,7 @@ static void UpdateChunkGenerators()
 
 		SDL_UnlockMutex(data->mutex);
 	}
+	uint64_t before = SDL_GetTicksNS();
 	while (!chunkThreadsHaveFinished)
 	{
 		chunkThreadsHaveFinished = true;
@@ -399,7 +412,6 @@ static void UpdateChunkGenerators()
 		{
 			ChunkGeneratorThreadData* data = &game->chunkGeneratorsData[i];
 
-			SDL_LockMutex(data->mutex);
 			bool isRunning = data->hasData && !data->hasFinished;
 			if (isRunning)
 				chunkThreadsHaveFinished = false;
@@ -408,6 +420,7 @@ static void UpdateChunkGenerators()
 			{
 				SDL_assert(data->hasStarted);
 
+				SDL_LockMutex(data->mutex);
 				Chunk* chunk = &game->chunks[data->chunk.id];
 				*chunk = data->chunk;
 
@@ -425,17 +438,21 @@ static void UpdateChunkGenerators()
 						for (int i = 0; i < 6; i++)
 							chunk->vertexOffsets[i] += offset;
 
-						UpdateVertexBuffer(game->chunkVertexBuffer, chunk->vertexOffsets[0] * sizeof(uint32_t), (uint8_t*)data->mesher.vertexData, data->mesher.numVertices * sizeof(uint32_t), cmdBuffer);
+						UpdateVertexBuffer(game->chunkVertexBuffer, chunk->vertexOffsets[0] * sizeof(uint32_t), (uint8_t*)data->mesher.vertexData, data->mesher.numVertices * sizeof(uint32_t), data->transferBuffer, data->mappedBuffer, cmdBuffer);
 					}
 				}
 
 				data->hasData = false;
 				data->hasFinished = false;
-			}
 
-			SDL_UnlockMutex(data->mutex);
+				SDL_UnlockMutex(data->mutex);
+
+			}
 		}
 	}
+
+	uint64_t after = SDL_GetTicksNS();
+	//SDL_Log("chunk thread %.2f ms", (after - before) / 1e6f);
 }
 
 void GameUpdate()
@@ -502,17 +519,6 @@ void GameUpdate()
 										{
 											QueueChunkGenerator(generatorID, chunk, false, true, game);
 										}
-
-										/*
-										int mesherID;
-										if (ChunkMesherAvailable(&mesherID))
-										{
-											QueueChunkMesher(mesherID, chunk, game);
-
-											found = true;
-											break; // update only 1 chunk mesh per frame to keep memory usage low
-										}
-										*/
 									}
 								}
 								else if (!flags && !chunk)
@@ -739,12 +745,18 @@ void GameRender()
 
 		SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
 
-		SDL_GPUBuffer* storageBuffer = game->chunkStorageBuffer->buffer;
-		SDL_BindGPUVertexStorageBuffers(renderPass, 0, &storageBuffer, 1);
-
 		ChunkUniforms uniforms = {};
 		uniforms.pv = pv;
 		SDL_PushGPUVertexUniformData(cmdBuffer, 0, &uniforms, sizeof(uniforms));
+
+		SDL_GPUBuffer* storageBuffer = game->chunkStorageBuffer->buffer;
+		SDL_BindGPUVertexStorageBuffers(renderPass, 0, &storageBuffer, 1);
+
+		SDL_GPUTextureSamplerBinding bindings[1];
+		bindings[0] = {};
+		bindings[0].texture = game->chunkPalette->handle;
+		bindings[0].sampler = game->defaultSampler;
+		SDL_BindGPUFragmentSamplers(renderPass, 0, bindings, 1);
 
 		SDL_DrawGPUPrimitivesIndirect(renderPass, game->chunkDrawBuffer->buffer, 0, numDrawCommands);
 
@@ -769,7 +781,7 @@ void GameRender()
 
 		SDL_BindGPUGraphicsPipeline(renderPass, game->lightingPipeline->pipeline);
 
-		RenderScreenQuad(&game->screenQuad, renderPass, game->gbuffer->numColorAttachments, game->gbuffer->colorAttachments, game->screenQuadSampler, cmdBuffer);
+		RenderScreenQuad(&game->screenQuad, renderPass, game->gbuffer->numColorAttachments, game->gbuffer->colorAttachments, game->defaultSampler, cmdBuffer);
 
 		SDL_EndGPURenderPass(renderPass);
 	}

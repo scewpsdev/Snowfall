@@ -10,6 +10,14 @@
 #define CHUNK_VERTEX_BUFFER_SIZE (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE /** 6 * 3 / 2 / 4*/)
 
 
+enum BlockType : uint8_t
+{
+	BLOCK_TYPE_NONE = 0,
+
+	BLOCK_TYPE_STONE,
+	BLOCK_TYPE_GRASS,
+};
+
 struct BlockData
 {
 	uint8_t id;
@@ -36,6 +44,7 @@ struct Chunk
 	//VertexBuffer* vertexBuffer;
 	//IndexBuffer* indexBuffer;
 	bool needsUpdate;
+	bool updateQueued;
 
 	int vertexOffsets[6];
 	int vertexCounts[6];

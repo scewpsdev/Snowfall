@@ -14,10 +14,8 @@ extern SDL_GPUDevice* device;
 extern GraphicsState* graphics;
 
 
-static int LoadKTX11Header(uint8_t* data, int size, TextureInfo* info)
+static void LoadKTX11Header(BinaryReader& reader, TextureInfo* info)
 {
-	BinaryReader reader(data, size);
-
 	//reader.AssertASCII("«KTX");
 	StringView identifier = reader.ReadASCII(12);
 	SDL_assert(strncmp(identifier.buffer, "«KTX", 4) == 0);
@@ -47,8 +45,6 @@ static int LoadKTX11Header(uint8_t* data, int size, TextureInfo* info)
 	info->numFaces = (int)faceCount;
 
 	reader.Skip(metadataSize);
-
-	return reader.pos;
 }
 
 Texture* LoadTexture(const char* path, SDL_GPUCommandBuffer* cmdBuffer)
@@ -56,11 +52,13 @@ Texture* LoadTexture(const char* path, SDL_GPUCommandBuffer* cmdBuffer)
 	size_t fileSize;
 	void* data = SDL_LoadFile(path, &fileSize);
 
-	TextureInfo info = {};
-	int offset = LoadKTX11Header((uint8_t*)data, (int)fileSize, &info);
+	BinaryReader reader((uint8_t*)data, (int)fileSize);
 
-	uint8_t* textureData = (uint8_t*)data + offset;
-	int textureDataSize = (int)fileSize - offset;
+	TextureInfo info = {};
+	LoadKTX11Header(reader, &info);
+
+	uint32_t imageSize = reader.ReadUInt32();
+	uint8_t* textureData = reader.CurrentPtr();
 
 	SDL_GPUTextureCreateInfo textureInfo = {};
 	textureInfo.format = info.format;
@@ -80,12 +78,12 @@ Texture* LoadTexture(const char* path, SDL_GPUCommandBuffer* cmdBuffer)
 
 	SDL_GPUTransferBufferCreateInfo transferBufferInfo = {};
 	transferBufferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transferBufferInfo.size = textureDataSize;
+	transferBufferInfo.size = imageSize;
 
 	SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(device, &transferBufferInfo);
 
 	void* textureTransferPtr = SDL_MapGPUTransferBuffer(device, transferBuffer, false);
-	SDL_memcpy(textureTransferPtr, textureData, textureDataSize);
+	SDL_memcpy(textureTransferPtr, textureData, imageSize);
 	SDL_UnmapGPUTransferBuffer(device, transferBuffer);
 
 	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
