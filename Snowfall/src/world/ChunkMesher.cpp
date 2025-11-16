@@ -421,49 +421,51 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 		}
 	}
 
-	uint64_t before = SDL_GetTicksNS();
-
 	// face generation
 	mesher->vertexOffsets[0] = mesher->numVertices;
-	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
+	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
-		uint8_t blockType = it->first;
-		GreedyPlane* greedyPlane = &it->second;
-
-		for (int i = 0; i < CHUNK_SIZE; i++)
+		auto slot = &mesher->greedyPlanes.slots[i];
+		if (slot->state == SLOT_USED)
 		{
-			for (int j = 0; j < CHUNK_SIZE; j++)
+			uint8_t blockType = slot->key;
+			GreedyPlane* greedyPlane = &slot->value;
+
+			for (int i = 0; i < CHUNK_SIZE; i++)
 			{
-				uint32_t column = greedyPlane->slicesZY[i * CHUNK_SIZE + j];
-
-				int y = 0;
-				while (y < CHUNK_SIZE)
+				for (int j = 0; j < CHUNK_SIZE; j++)
 				{
-					y += TrailingZeros(column >> y);
-					if (y >= CHUNK_SIZE)
-						continue;
+					uint32_t column = greedyPlane->slicesZY[i * CHUNK_SIZE + j];
 
-					uint32_t sy = TrailingOnes(column >> y);
-
-					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-					uint32_t mask = trimmedMask << y;
-
-					int sx = 1;
-					while (j + sx < CHUNK_SIZE)
+					int y = 0;
+					while (y < CHUNK_SIZE)
 					{
-						uint32_t trimmedNextCol = (greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx] >> y) & trimmedMask;
-						if (trimmedNextCol != trimmedMask)
-							break;
+						y += TrailingZeros(column >> y);
+						if (y >= CHUNK_SIZE)
+							continue;
 
-						greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx] &= ~mask;
-						sx++;
+						uint32_t sy = TrailingOnes(column >> y);
+
+						uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+						uint32_t mask = trimmedMask << y;
+
+						int sx = 1;
+						while (j + sx < CHUNK_SIZE)
+						{
+							uint32_t trimmedNextCol = (greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx] >> y) & trimmedMask;
+							if (trimmedNextCol != trimmedMask)
+								break;
+
+							greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx] &= ~mask;
+							sx++;
+						}
+
+						ivec3 position = ivec3(i, y, j);
+
+						ChunkBuilderAddFace(mesher, position, sx, sy, 0, (uint8_t)blockType);
+
+						y += sy;
 					}
-
-					ivec3 position = ivec3(i, y, j);
-
-					ChunkBuilderAddFace(mesher, position, sx, sy, 0, (uint8_t)blockType);
-
-					y += sy;
 				}
 			}
 		}
@@ -471,45 +473,49 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 	mesher->vertexCounts[0] = mesher->numVertices - mesher->vertexOffsets[0];
 
 	mesher->vertexOffsets[1] = mesher->numVertices;
-	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
+	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
-		uint8_t blockType = it->first;
-		GreedyPlane* greedyPlane = &it->second;
-
-		for (int i = 0; i < CHUNK_SIZE; i++)
+		auto slot = &mesher->greedyPlanes.slots[i];
+		if (slot->state == SLOT_USED)
 		{
-			for (int j = 0; j < CHUNK_SIZE; j++)
+			uint8_t blockType = slot->key;
+			GreedyPlane* greedyPlane = &slot->value;
+
+			for (int i = 0; i < CHUNK_SIZE; i++)
 			{
-				uint32_t column = greedyPlane->slicesZY[i * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE];
-
-				int y = 0;
-				while (y < CHUNK_SIZE)
+				for (int j = 0; j < CHUNK_SIZE; j++)
 				{
-					y += TrailingZeros(column >> y);
-					if (y >= CHUNK_SIZE)
-						continue;
+					uint32_t column = greedyPlane->slicesZY[i * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE];
 
-					uint32_t sy = TrailingOnes(column >> y);
-
-					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-					uint32_t mask = trimmedMask << y;
-
-					int sx = 1;
-					while (j + sx < CHUNK_SIZE)
+					int y = 0;
+					while (y < CHUNK_SIZE)
 					{
-						uint32_t trimmedNextCol = (greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
-						if (trimmedNextCol != trimmedMask)
-							break;
+						y += TrailingZeros(column >> y);
+						if (y >= CHUNK_SIZE)
+							continue;
 
-						greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
-						sx++;
+						uint32_t sy = TrailingOnes(column >> y);
+
+						uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+						uint32_t mask = trimmedMask << y;
+
+						int sx = 1;
+						while (j + sx < CHUNK_SIZE)
+						{
+							uint32_t trimmedNextCol = (greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
+							if (trimmedNextCol != trimmedMask)
+								break;
+
+							greedyPlane->slicesZY[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
+							sx++;
+						}
+
+						ivec3 position = ivec3(i, y, j);
+
+						ChunkBuilderAddFace(mesher, position, sx, sy, 1, (uint8_t)blockType);
+
+						y += sy;
 					}
-
-					ivec3 position = ivec3(i, y, j);
-
-					ChunkBuilderAddFace(mesher, position, sx, sy, 1, (uint8_t)blockType);
-
-					y += sy;
 				}
 			}
 		}
@@ -517,45 +523,49 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 	mesher->vertexCounts[1] = mesher->numVertices - mesher->vertexOffsets[1];
 
 	mesher->vertexOffsets[2] = mesher->numVertices;
-	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
+	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
-		uint8_t blockType = it->first;
-		GreedyPlane* greedyPlane = &it->second;
-
-		for (int i = 0; i < CHUNK_SIZE; i++)
+		auto slot = &mesher->greedyPlanes.slots[i];
+		if (slot->state == SLOT_USED)
 		{
-			for (int j = 0; j < CHUNK_SIZE; j++)
+			uint8_t blockType = slot->key;
+			GreedyPlane* greedyPlane = &slot->value;
+
+			for (int i = 0; i < CHUNK_SIZE; i++)
 			{
-				uint32_t column = greedyPlane->slicesXZ[i * CHUNK_SIZE + j];
-
-				int y = 0;
-				while (y < CHUNK_SIZE)
+				for (int j = 0; j < CHUNK_SIZE; j++)
 				{
-					y += TrailingZeros(column >> y);
-					if (y >= CHUNK_SIZE)
-						continue;
+					uint32_t column = greedyPlane->slicesXZ[i * CHUNK_SIZE + j];
 
-					uint32_t sy = TrailingOnes(column >> y);
-
-					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-					uint32_t mask = trimmedMask << y;
-
-					int sx = 1;
-					while (j + sx < CHUNK_SIZE)
+					int y = 0;
+					while (y < CHUNK_SIZE)
 					{
-						uint32_t trimmedNextCol = (greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx] >> y) & trimmedMask;
-						if (trimmedNextCol != trimmedMask)
-							break;
+						y += TrailingZeros(column >> y);
+						if (y >= CHUNK_SIZE)
+							continue;
 
-						greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx] &= ~mask;
-						sx++;
+						uint32_t sy = TrailingOnes(column >> y);
+
+						uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+						uint32_t mask = trimmedMask << y;
+
+						int sx = 1;
+						while (j + sx < CHUNK_SIZE)
+						{
+							uint32_t trimmedNextCol = (greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx] >> y) & trimmedMask;
+							if (trimmedNextCol != trimmedMask)
+								break;
+
+							greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx] &= ~mask;
+							sx++;
+						}
+
+						ivec3 position = ivec3(j, i, y);
+
+						ChunkBuilderAddFace(mesher, position, sx, sy, 2, (uint8_t)blockType);
+
+						y += sy;
 					}
-
-					ivec3 position = ivec3(j, i, y);
-
-					ChunkBuilderAddFace(mesher, position, sx, sy, 2, (uint8_t)blockType);
-
-					y += sy;
 				}
 			}
 		}
@@ -563,45 +573,49 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 	mesher->vertexCounts[2] = mesher->numVertices - mesher->vertexOffsets[2];
 
 	mesher->vertexOffsets[3] = mesher->numVertices;
-	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
+	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
-		uint8_t blockType = it->first;
-		GreedyPlane* greedyPlane = &it->second;
-
-		for (int i = 0; i < CHUNK_SIZE; i++)
+		auto slot = &mesher->greedyPlanes.slots[i];
+		if (slot->state == SLOT_USED)
 		{
-			for (int j = 0; j < CHUNK_SIZE; j++)
+			uint8_t blockType = slot->key;
+			GreedyPlane* greedyPlane = &slot->value;
+
+			for (int i = 0; i < CHUNK_SIZE; i++)
 			{
-				uint32_t column = greedyPlane->slicesXZ[i * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE];
-
-				int y = 0;
-				while (y < CHUNK_SIZE)
+				for (int j = 0; j < CHUNK_SIZE; j++)
 				{
-					y += TrailingZeros(column >> y);
-					if (y >= CHUNK_SIZE)
-						continue;
+					uint32_t column = greedyPlane->slicesXZ[i * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE];
 
-					uint32_t sy = TrailingOnes(column >> y);
-
-					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-					uint32_t mask = trimmedMask << y;
-
-					int sx = 1;
-					while (j + sx < CHUNK_SIZE)
+					int y = 0;
+					while (y < CHUNK_SIZE)
 					{
-						uint32_t trimmedNextCol = (greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
-						if (trimmedNextCol != trimmedMask)
-							break;
+						y += TrailingZeros(column >> y);
+						if (y >= CHUNK_SIZE)
+							continue;
 
-						greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
-						sx++;
+						uint32_t sy = TrailingOnes(column >> y);
+
+						uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+						uint32_t mask = trimmedMask << y;
+
+						int sx = 1;
+						while (j + sx < CHUNK_SIZE)
+						{
+							uint32_t trimmedNextCol = (greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
+							if (trimmedNextCol != trimmedMask)
+								break;
+
+							greedyPlane->slicesXZ[i * CHUNK_SIZE + j + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
+							sx++;
+						}
+
+						ivec3 position = ivec3(j, i, y);
+
+						ChunkBuilderAddFace(mesher, position, sx, sy, 3, (uint8_t)blockType);
+
+						y += sy;
 					}
-
-					ivec3 position = ivec3(j, i, y);
-
-					ChunkBuilderAddFace(mesher, position, sx, sy, 3, (uint8_t)blockType);
-
-					y += sy;
 				}
 			}
 		}
@@ -609,45 +623,49 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 	mesher->vertexCounts[3] = mesher->numVertices - mesher->vertexOffsets[3];
 
 	mesher->vertexOffsets[4] = mesher->numVertices;
-	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
+	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
-		uint8_t blockType = it->first;
-		GreedyPlane* greedyPlane = &it->second;
-
-		for (int z = 0; z < CHUNK_SIZE; z++)
+		auto slot = &mesher->greedyPlanes.slots[i];
+		if (slot->state == SLOT_USED)
 		{
-			for (int x = 0; x < CHUNK_SIZE; x++)
+			uint8_t blockType = slot->key;
+			GreedyPlane* greedyPlane = &slot->value;
+
+			for (int z = 0; z < CHUNK_SIZE; z++)
 			{
-				uint32_t column = greedyPlane->slicesXY[z * CHUNK_SIZE + x];
-
-				int y = 0;
-				while (y < CHUNK_SIZE)
+				for (int x = 0; x < CHUNK_SIZE; x++)
 				{
-					y += TrailingZeros(column >> y);
-					if (y >= CHUNK_SIZE)
-						continue;
+					uint32_t column = greedyPlane->slicesXY[z * CHUNK_SIZE + x];
 
-					uint32_t sy = TrailingOnes(column >> y);
-
-					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-					uint32_t mask = trimmedMask << y;
-
-					int sx = 1;
-					while (x + sx < CHUNK_SIZE)
+					int y = 0;
+					while (y < CHUNK_SIZE)
 					{
-						uint32_t trimmedNextCol = (greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx] >> y) & trimmedMask;
-						if (trimmedNextCol != trimmedMask)
-							break;
+						y += TrailingZeros(column >> y);
+						if (y >= CHUNK_SIZE)
+							continue;
 
-						greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx] &= ~mask;
-						sx++;
+						uint32_t sy = TrailingOnes(column >> y);
+
+						uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+						uint32_t mask = trimmedMask << y;
+
+						int sx = 1;
+						while (x + sx < CHUNK_SIZE)
+						{
+							uint32_t trimmedNextCol = (greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx] >> y) & trimmedMask;
+							if (trimmedNextCol != trimmedMask)
+								break;
+
+							greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx] &= ~mask;
+							sx++;
+						}
+
+						ivec3 position = ivec3(x, y, z);
+
+						ChunkBuilderAddFace(mesher, position, sx, sy, 4, (uint8_t)blockType);
+
+						y += sy;
 					}
-
-					ivec3 position = ivec3(x, y, z);
-
-					ChunkBuilderAddFace(mesher, position, sx, sy, 4, (uint8_t)blockType);
-
-					y += sy;
 				}
 			}
 		}
@@ -655,58 +673,59 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 	mesher->vertexCounts[4] = mesher->numVertices - mesher->vertexOffsets[4];
 
 	mesher->vertexOffsets[5] = mesher->numVertices;
-	for (auto it = mesher->greedyPlanes.begin(); it != mesher->greedyPlanes.end(); it++)
+	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
-		uint8_t blockType = it->first;
-		GreedyPlane* greedyPlane = &it->second;
-
-		for (int z = 0; z < CHUNK_SIZE; z++)
+		auto slot = &mesher->greedyPlanes.slots[i];
+		if (slot->state == SLOT_USED)
 		{
-			for (int x = 0; x < CHUNK_SIZE; x++)
+			uint8_t blockType = slot->key;
+			GreedyPlane* greedyPlane = &slot->value;
+
+			for (int z = 0; z < CHUNK_SIZE; z++)
 			{
-				uint32_t column = greedyPlane->slicesXY[z * CHUNK_SIZE + x + CHUNK_SIZE * CHUNK_SIZE];
-
-				int y = 0;
-				while (y < CHUNK_SIZE)
+				for (int x = 0; x < CHUNK_SIZE; x++)
 				{
-					y += TrailingZeros(column >> y);
-					if (y >= CHUNK_SIZE)
-						continue;
+					uint32_t column = greedyPlane->slicesXY[z * CHUNK_SIZE + x + CHUNK_SIZE * CHUNK_SIZE];
 
-					uint32_t sy = TrailingOnes(column >> y);
-
-					uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
-					uint32_t mask = trimmedMask << y;
-
-					int sx = 1;
-					while (x + sx < CHUNK_SIZE)
+					int y = 0;
+					while (y < CHUNK_SIZE)
 					{
-						uint32_t trimmedNextCol = (greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
-						if (trimmedNextCol != trimmedMask)
-							break;
+						y += TrailingZeros(column >> y);
+						if (y >= CHUNK_SIZE)
+							continue;
 
-						greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
-						sx++;
+						uint32_t sy = TrailingOnes(column >> y);
+
+						uint32_t trimmedMask = ((uint32_t)(1ull << (y + sy)) - 1) >> y;
+						uint32_t mask = trimmedMask << y;
+
+						int sx = 1;
+						while (x + sx < CHUNK_SIZE)
+						{
+							uint32_t trimmedNextCol = (greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx + CHUNK_SIZE * CHUNK_SIZE] >> y) & trimmedMask;
+							if (trimmedNextCol != trimmedMask)
+								break;
+
+							greedyPlane->slicesXY[z * CHUNK_SIZE + x + sx + CHUNK_SIZE * CHUNK_SIZE] &= ~mask;
+							sx++;
+						}
+
+						ivec3 position = ivec3(x, y, z);
+
+						ChunkBuilderAddFace(mesher, position, sx, sy, 5, (uint8_t)blockType);
+
+						y += sy;
 					}
-
-					ivec3 position = ivec3(x, y, z);
-
-					ChunkBuilderAddFace(mesher, position, sx, sy, 5, (uint8_t)blockType);
-
-					y += sy;
 				}
 			}
 		}
 	}
 	mesher->vertexCounts[5] = mesher->numVertices - mesher->vertexOffsets[5];
-
-	uint64_t after = SDL_GetTicksNS();
-	//SDL_Log("meshing %.2f ms", (after - before) / 1e6f);
 }
 
 void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 {
-	SDL_assert(chunk->isLoaded);
+	SDL_assert(chunk->isActive);
 
 	/*
 	if (chunk->vertexBuffer)
@@ -719,8 +738,10 @@ void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 	}
 	*/
 
+	uint64_t before = SDL_GetTicksNS();
+
 	mesher->numVertices = 0;
-	new(&mesher->greedyPlanes)std::map<uint8_t, GreedyPlane>();
+	InitHashMap(&mesher->greedyPlanes);
 	//mesher->greedyPlanes.clear();
 
 	//chunk->vertexOffset = 0;
@@ -746,6 +767,9 @@ void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 	neighborFlags[5] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Back * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
 
 	GreedyMesh(mesher, chunk, neighbors, neighborFlags, game);
+
+	uint64_t after = SDL_GetTicksNS();
+	//SDL_Log("meshing %.2f ms", (after - before) / 1e6f);
 
 	/*
 	for (int i = 0; i < CHUNK_SIZE; i++)
@@ -796,7 +820,7 @@ void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 	//ChunkBuilderCreateBuffers(builder, &chunk->instanceBuffer);
 	//ChunkBuilderCreateBuffers(builder, &chunk->vertexBuffer, &chunk->indexBuffer);
 
-	//chunk->needsUpdate = false;
+	//chunk->needsMeshUpdate = false;
 	//chunk->hasMesh = true;
 }
 

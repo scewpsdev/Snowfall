@@ -111,6 +111,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(ProjectDir)lib\include\;$(ProjectDir)src\;D:\Repositories\SDL3-3.3.2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -129,7 +130,7 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>$(ProjectDir)lib\include\;$(ProjectDir)src\;D:\Repositories\SDL3-3.3.2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <FloatingPointModel>Fast</FloatingPointModel>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
@@ -200,6 +201,7 @@
     <ClInclude Include="src\math\Quaternion.h" />
     <ClInclude Include="src\math\Vector.h" />
     <ClInclude Include="src\utils\Hash.h" />
+    <ClInclude Include="src\utils\HashMap.h" />
     <ClInclude Include="src\utils\List.h" />
     <ClInclude Include="src\utils\uint128_t.h" />
     <ClInclude Include="src\world\ChunkAllocator.h" />
@@ -217,6 +219,7 @@
     <None Include="res\shaders\lighting.vs.glsl" />
     <None Include="res\shaders\screenquad.fs.glsl" />
     <None Include="res\shaders\screenquad.vs.glsl" />
+    <None Include="res\shaders\simplex.cs.glsl" />
     <None Include="res\shaders\sprite.fs.glsl" />
     <None Include="res\shaders\sprite.vs.glsl" />
   </ItemGroup>

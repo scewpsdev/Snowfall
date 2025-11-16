@@ -61,7 +61,7 @@ extern SDL_GPUCommandBuffer* cmdBuffer;
 /*
 void DisableChunk(Chunk* chunk)
 {
-	SDL_assert(chunk->isLoaded);
+	SDL_assert(chunk->isActive);
 	if (chunk->vertexBuffer)
 	{
 		//SDL_assert(chunk->indexBuffer);
@@ -70,6 +70,6 @@ void DisableChunk(Chunk* chunk)
 		//DestroyIndexBuffer(chunk->indexBuffer);
 		//chunk->indexBuffer = nullptr;
 	}
-	chunk->isLoaded = false;
+	chunk->isActive = false;
 }
 */

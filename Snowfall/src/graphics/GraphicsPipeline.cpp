@@ -78,7 +78,7 @@ GraphicsPipelineInfo CreateGraphicsPipelineInfo(Shader* shader, int numVertexBuf
 	pipelineInfo.colorTargets[0].blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
 
 	pipelineInfo.hasDepthTarget = true;
-	pipelineInfo.depthFormat = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
+	pipelineInfo.depthFormat = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
 
 	for (int i = 0; i < numVertexBuffers; i++)
 		pipelineInfo.numAttributes += vertexLayouts[i].numAttributes;

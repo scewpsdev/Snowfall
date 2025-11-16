@@ -321,6 +321,7 @@ vec3 operator*(ivec3 a, float b);
 vec3 operator/(ivec3 a, float b);
 
 bool operator==(const ivec3& a, const ivec3& b);
+bool operator!=(const ivec3& a, const ivec3& b);
 
 float dot(const vec3& a, const vec3& b);
 float dot(const vec4& a, const vec4& b);

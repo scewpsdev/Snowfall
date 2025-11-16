@@ -40,7 +40,7 @@ RenderTarget* CreateRenderTarget(int width, int height, int numColorAttachments,
 
 		SDL_GPUTextureCreateInfo textureInfo = {};
 		textureInfo.type = SDL_GPU_TEXTURETYPE_2D;
-		textureInfo.format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
+		textureInfo.format = depthAttachmentInfo->format;
 		textureInfo.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | (depthAttachmentInfo->storeOp == SDL_GPU_STOREOP_DONT_CARE ? 0 : SDL_GPU_TEXTUREUSAGE_SAMPLER);
 		textureInfo.width = width;
 		textureInfo.height = height;

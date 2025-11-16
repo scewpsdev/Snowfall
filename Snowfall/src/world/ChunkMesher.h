@@ -8,7 +8,7 @@
 
 #include "math/Vector.h"
 
-#include <map>
+#include "utils/HashMap.h"
 
 
 struct GreedyPlane
@@ -26,7 +26,8 @@ struct ChunkMesher
 
 	uint64_t faceMasks[CHUNK_SIZE_P * CHUNK_SIZE_P * 6];
 
-	std::map<uint8_t, GreedyPlane> greedyPlanes;
+#define MAX_BLOCK_TYPES 32
+	HashMap<uint8_t, GreedyPlane, MAX_BLOCK_TYPES> greedyPlanes;
 
 	//uint32_t slicesXY[CHUNK_SIZE * CHUNK_SIZE * 2 * 256];
 	//uint32_t slicesZY[CHUNK_SIZE * CHUNK_SIZE * 2 * 256];

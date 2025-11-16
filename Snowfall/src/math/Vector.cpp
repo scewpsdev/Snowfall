@@ -686,6 +686,11 @@ bool operator==(const ivec3& a, const ivec3& b)
 	return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
+bool operator!=(const ivec3& a, const ivec3& b)
+{
+	return a.x != b.x || a.y != b.y || a.z != b.z;
+}
+
 float dot(const vec3& a, const vec3& b)
 {
 	return a.x * b.x + a.y * b.y + a.z * b.z;

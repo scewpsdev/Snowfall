@@ -110,11 +110,14 @@ struct ChunkGeneratorThreadData
 	bool hasFinished;
 
 	GameState* game;
-	WorldGenerator generator;
 	ChunkMesher mesher;
 
 	SDL_GPUTransferBuffer* transferBuffer;
-	void* mappedBuffer;
+	void* mappedTransferBuffer;
+
+	SDL_GPUBuffer* noiseOutputBuffer;
+	SDL_GPUTransferBuffer* noiseReadbackBuffer;
+	SDL_GPUCommandBuffer* noiseCommandBuffer;
 
 	Chunk chunk;
 	bool generate;
@@ -142,6 +145,7 @@ struct GameState
 	SDL_Thread* chunkGenerators[NUM_CHUNK_GENERATOR_THREADS];
 	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
 
+	WorldGenerator worldGenerator;
 	ChunkAllocator chunkAllocator;
 	VertexBuffer* chunkVertexBuffer;
 

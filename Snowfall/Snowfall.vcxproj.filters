@@ -200,6 +200,9 @@
     <ClInclude Include="src\game\Game.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\utils\HashMap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="res\shaders\chunk.vs.glsl" />
@@ -210,5 +213,6 @@
     <None Include="res\shaders\sprite.vs.glsl" />
     <None Include="res\shaders\lighting.fs.glsl" />
     <None Include="res\shaders\lighting.vs.glsl" />
+    <None Include="res\shaders\simplex.cs.glsl" />
   </ItemGroup>
 </Project>
