@@ -21,11 +21,6 @@ float degrees(float radians)
 	return radians / PI * 180.0f;
 }
 
-float clamp(float f, float min, float max)
-{
-	return fminf(fmaxf(f, min), max);
-}
-
 static float nextGaussian = FLT_MAX;
 static float RandomGaussian(Random& random)
 {

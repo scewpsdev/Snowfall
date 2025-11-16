@@ -36,11 +36,11 @@ static float SampleNoise(float x, float z, int octaves, float frequencyMultiplie
 
 static float Continentalness(WorldGenerator* generator, int worldX, int worldZ)
 {
-	const int octaves = 3;
+	const int octaves = 5;
 	const float frequencyMultiplier = 2;
 	const float amplitudeMultiplier = 0.5f;
 
-	const float baseFrequency = 1.0f / 8192 / 2;
+	const float baseFrequency = 1.0f / 8192;
 
 	float x = baseFrequency * worldX;
 	float z = baseFrequency * worldZ;
@@ -52,26 +52,26 @@ static float Continentalness(WorldGenerator* generator, int worldX, int worldZ)
 
 static float Erosion(WorldGenerator* generator, int worldX, int worldZ)
 {
-	const int octaves = 5;
+	const int octaves = 8;
 	const float frequencyMultiplier = 4;
 	const float amplitudeMultiplier = 0.25f;
 
-	const float baseFrequency = 1.0f / 2048;
+	const float baseFrequency = 1.0f / 4096;
 
 	float x = baseFrequency * worldX;
 	float z = baseFrequency * worldZ;
 
 	float noise = SampleNoise(-x - 1000, z, octaves, frequencyMultiplier, amplitudeMultiplier);
-	//noise = SDL_powf(2, noise * 0.5f + 0.5f) * 2 - 3;
-	noise = 1 - SDL_fabsf(noise);
-	noise = SDL_powf(noise, 4);
+	//noise = 1 - SDL_fabsf(noise);
+	//noise = SDL_powf(noise, 4);
+	noise = noise * 0.5f + 0.5f;
 
 	return noise;
 }
 
 static float PeaksAndValleys(WorldGenerator* generator, int worldX, int worldZ)
 {
-	const int octaves = 3;
+	const int octaves = 5;
 	const float frequencyMultiplier = 2;
 	const float amplitudeMultiplier = 0.5f;
 
@@ -81,7 +81,6 @@ static float PeaksAndValleys(WorldGenerator* generator, int worldX, int worldZ)
 	float z = baseFrequency * worldZ;
 
 	float noise = SampleNoise(-x, -z - 1000, octaves, frequencyMultiplier, amplitudeMultiplier);
-	noise = SDL_fabsf(noise) * 2 - 1;
 
 	return noise;
 }
@@ -165,13 +164,27 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 
 			float continentalness = Continentalness(generator, worldX, worldZ);
 
-			float height = continentalness * 200;
+			float height =
+				continentalness < -0.1f ? remap(continentalness, -1, -0.1f, -100, -20) :
+				continentalness < -0.05f ? remap(smoothstep(0, 1, remap(continentalness, -0.1f, -0.05f, 0, 1)), 0, 1, -20, 10):
+				continentalness < 0.2f ? remap(continentalness, -0.05f, 0.2f, 10, 15) :
+				continentalness < 0.35f ? remap(smoothstep(0, 1, remap(continentalness, 0.2f, 0.35f, 0, 1)), 0, 1, 15, 40) :
+				remap(continentalness, 0.35f, 1, 40, 70);
 
 			float erosion = Erosion(generator, worldX, worldZ);
-			height *= erosion;
+			erosion = remap(erosion, 0, 1, -2, 3);
+			float heightMultiplier =
+				erosion < 0.1f ? remap(erosion, 0, 0.1f, 1, 0.7f) :
+				erosion < 0.25f ? remap(erosion, 0.1f, 0.25f, 0.7f, 0.5f) :
+				erosion < 0.27f ? remap(erosion, 0.25f, 0.27f, 0.5f, 0.6f) :
+				erosion < 0.55f ? remap(erosion, 0.27f, 0.55f, 0.6f, 0.17f) :
+				erosion < 0.75f ? remap(erosion, 0.55f, 0.75f, 0.17f, 0.14f) :
+				erosion < 0.85f ? remap(1 - SDL_powf(remap(erosion, 0.75f, 0.85f, -1, 1), 2), 0, 1, 0.14f, 0.5f) :
+				remap(erosion, 0.85f, 1, 0.14f, 0.05f);
+			height *= heightMultiplier;
 
-			//float pnv = PeaksAndValleys(generator, worldX, worldZ);
-			//height += pnv * 5;
+			float pnv = PeaksAndValleys(generator, worldX, worldZ);
+			height += pnv * 10;
 
 			heightmap[x + z * CHUNK_SIZE] = height;
 		}
@@ -201,7 +214,7 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 
 				float density = noise[x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE]; // Density(generator, worldX, worldY, worldZ, terrainHeight);
 
-				const float squashingFactor = 0.03f;
+				const float squashingFactor = 0.02f;
 				density += (terrainHeight - worldY) * squashingFactor;
 
 				block->id = density > 0 ? BLOCK_TYPE_STONE : worldY < 0 ? BLOCK_TYPE_WATER : BLOCK_TYPE_NONE;

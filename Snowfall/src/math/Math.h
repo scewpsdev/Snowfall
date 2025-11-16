@@ -4,6 +4,8 @@
 #include "Quaternion.h"
 #include "Matrix.h"
 
+#include <SDL3/SDL.h>
+
 
 #define PI 3.14159265359f
 #define Deg2Rad (PI / 180.0f)
@@ -45,12 +47,28 @@ inline int idivfloor(int a, int b)
 	return q;
 }
 
+inline float clamp(float f, float min, float max)
+{
+	return SDL_min(SDL_max(f, min), max);
+}
+
+inline float remap(float x, float min, float max, float newMin, float newMax)
+{
+	return (x - min) / (max - min) * (newMax - newMin) + newMin;
+}
+
+inline float smoothstep(float edge0, float edge1, float x)
+{
+	// Scale, bias and saturate x to 0..1 range
+	x = clamp(remap(x, edge0, edge1, 0, 1), 0, 1);
+	// Evaluate polynomial
+	return x * x * (3 - 2 * x);
+}
+
 int fsign(float f);
 
 float radians(float degrees);
 float degrees(float radians);
-
-float clamp(float f, float min, float max);
 
 inline int min(int a, int b) { return a < b ? a : b; }
 inline int max(int a, int b) { return a > b ? a : b; }
