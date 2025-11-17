@@ -115,6 +115,7 @@ struct ChunkGeneratorThreadData
 	SDL_GPUTransferBuffer* transferBuffer;
 	void* mappedTransferBuffer;
 
+	SDL_GPUBuffer* heightmapOutputBuffer;
 	SDL_GPUBuffer* noiseOutputBuffer;
 	SDL_GPUTransferBuffer* noiseReadbackBuffer;
 	SDL_GPUCommandBuffer* noiseCommandBuffer;
@@ -138,7 +139,7 @@ struct GameState
 	int numLoadedChunks;
 	int lastLoadedChunk;
 
-#define NUM_CHUNK_LOD_LEVELS 8
+#define NUM_CHUNK_LOD_LEVELS 1
 	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
 #define NUM_CHUNK_GENERATOR_THREADS 8

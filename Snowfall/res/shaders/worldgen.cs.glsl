@@ -6,8 +6,12 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in; // 8*8*8 = 512 threads
 
+layout(std430, set = 0, binding = 0) readonly buffer HeightmapData {
+	float heightmap[];
+};
+
 layout(std430, set = 1, binding = 0) writeonly buffer OutData {
-	float outData[];
+	uint outData[];
 };
 
 layout(std140, set = 2, binding = 0) uniform Params {
@@ -96,7 +100,8 @@ float simplex3d(vec3 v)
 									dot(p2,x2), dot(p3,x3) ) );
 }
 
-float fbm(vec3 x) {
+float fbm(vec3 x)
+{
 	float v = 0.0;
 	float a = 0.5;
 	vec3 shift = vec3(100);
@@ -111,10 +116,16 @@ float fbm(vec3 x) {
 void main()
 {
 	ivec3 gid = ivec3(gl_GlobalInvocationID);
-	vec3 worldPosition = chunkPosition + gid * chunkScale;
+	ivec3 worldPosition = chunkPosition + gid * chunkScale;
 
-	float noise = fbm(worldPosition * baseFrequency);
+	float height = heightmap[gid.x + gid.z * CHUNK_SIZE];
+	float density = fbm(worldPosition * baseFrequency);
+
+	const float squashingFactor = 0.02f;
+	density += (height - worldPosition.y) * squashingFactor;
+
+	uint block = density > 0 ? 1 : worldPosition.y < 0 ? 3 : 0;
 
 	uint idx = gid.x + gid.y * CHUNK_SIZE + gid.z * CHUNK_SIZE * CHUNK_SIZE;
-	outData[idx] = noise;
+	outData[idx] = block;
 }

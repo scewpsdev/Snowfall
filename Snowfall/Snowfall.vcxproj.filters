@@ -213,6 +213,7 @@
     <None Include="res\shaders\sprite.vs.glsl" />
     <None Include="res\shaders\lighting.fs.glsl" />
     <None Include="res\shaders\lighting.vs.glsl" />
-    <None Include="res\shaders\simplex.cs.glsl" />
+    <None Include="res\shaders\worldgen.cs.glsl" />
+    <None Include="res\shaders\heightmap.cs.glsl" />
   </ItemGroup>
 </Project>

@@ -155,13 +155,18 @@ static int ChunkGeneratorMain(void* ptr)
 	data->transferBuffer = SDL_CreateGPUTransferBuffer(device, &transferBufferInfo);
 	data->mappedTransferBuffer = SDL_MapGPUTransferBuffer(device, data->transferBuffer, false);
 
+	SDL_GPUBufferCreateInfo heightmapOutputBufferInfo = {};
+	heightmapOutputBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * sizeof(float);
+	heightmapOutputBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
+	data->heightmapOutputBuffer = SDL_CreateGPUBuffer(device, &heightmapOutputBufferInfo);
+
 	SDL_GPUBufferCreateInfo noiseOutputBufferInfo = {};
-	noiseOutputBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(float);
+	noiseOutputBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint32_t);
 	noiseOutputBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
 	data->noiseOutputBuffer = SDL_CreateGPUBuffer(device, &noiseOutputBufferInfo);
 
 	SDL_GPUTransferBufferCreateInfo noiseReadbackBufferInfo = {};
-	noiseReadbackBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(float);
+	noiseReadbackBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint32_t);
 	noiseReadbackBufferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
 	data->noiseReadbackBuffer = SDL_CreateGPUTransferBuffer(device, &noiseReadbackBufferInfo);
 
@@ -316,8 +321,8 @@ void GameInit()
 	}
 
 	game->cameraPosition = vec3(0, 32, 0);
-	game->cameraPitch = -0.4f * PI;
-	game->cameraYaw = 0.25f * PI;
+	//game->cameraPitch = -0.4f * PI;
+	//game->cameraYaw = 0.25f * PI;
 
 	game->mouseLocked = true;
 }
@@ -608,6 +613,15 @@ void GameUpdate()
 
 	if (app->keys[SDL_SCANCODE_ESCAPE] && !app->lastKeys[SDL_SCANCODE_ESCAPE])
 		game->mouseLocked = !game->mouseLocked;
+	if (app->keys[SDL_SCANCODE_F6] && !app->lastKeys[SDL_SCANCODE_F6])
+	{
+		// regenerate chunks
+		for (int i = 0; i < MAX_LOADED_CHUNKS; i++)
+		{
+			if (game->chunks[i].isLoaded)
+				UnloadChunk(&game->chunks[i]);
+		}
+	}
 
 	SDL_SetWindowRelativeMouseMode(window, game->mouseLocked);
 
@@ -675,7 +689,7 @@ static int UpdateDrawBuffers(vec4 frustumPlanes[6])
 	}
 	game->numRenderedChunks = numDrawChunks;
 
-	//SDL_qsort(chunkDrawList, numDrawChunks, sizeof(Chunk*), (SDL_CompareCallback)ChunkComparator);
+	SDL_qsort(chunkDrawList, numDrawChunks, sizeof(Chunk*), (SDL_CompareCallback)ChunkComparator);
 
 	int maxDrawCommands = numDrawChunks * 6;
 	SDL_GPUIndirectDrawCommand* drawCommands = (SDL_GPUIndirectDrawCommand*)BumpAllocatorCalloc(&memory->transientAllocator, maxDrawCommands, sizeof(SDL_GPUIndirectDrawCommand));

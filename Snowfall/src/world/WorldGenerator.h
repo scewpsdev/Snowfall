@@ -15,6 +15,7 @@ struct WorldGenerator
 	uint32_t seed;
 	Random random;
 
+	Shader* heightmapShader;
 	Shader* noiseShader;
 };
 
