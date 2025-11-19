@@ -180,6 +180,8 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	SDL_ReleaseGPUFence(device, fence);
 
 	// TODO
+	// worldgen write to texture memory
+	// greedy meshing on gpu
 	// noise to spline remapping
 	// rivers
 	// different block types
