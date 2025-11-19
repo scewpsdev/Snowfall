@@ -6,6 +6,7 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in; // 8*8*8 = 512 threads
 
+/*
 layout(std430, set = 0, binding = 0) readonly buffer HeightmapData {
 	float heightmap[];
 };
@@ -13,6 +14,11 @@ layout(std430, set = 0, binding = 0) readonly buffer HeightmapData {
 layout(std430, set = 1, binding = 0) writeonly buffer OutData {
 	uint outData[];
 };
+*/
+
+layout(set = 0, binding = 0) uniform sampler2D heightmap;
+
+layout(set = 1, binding = 0, r8ui) uniform uimage3D voxelDataImg;
 
 layout(std140, set = 2, binding = 0) uniform Params {
 	ivec4 chunkPositionScale;
@@ -118,7 +124,7 @@ void main()
 	ivec3 gid = ivec3(gl_GlobalInvocationID);
 	ivec3 worldPosition = chunkPosition + gid * chunkScale;
 
-	float height = heightmap[gid.x + gid.z * CHUNK_SIZE];
+	float height = texelFetch(heightmap, gid.xz, 0).r; // heightmap[gid.x + gid.z * CHUNK_SIZE];
 	float density = fbm(worldPosition * baseFrequency);
 
 	const float squashingFactor = 0.02f;
@@ -126,6 +132,8 @@ void main()
 
 	uint block = density > 0 ? 1 : worldPosition.y < 0 ? 3 : 0;
 
-	uint idx = gid.x + gid.y * CHUNK_SIZE + gid.z * CHUNK_SIZE * CHUNK_SIZE;
-	outData[idx] = block;
+	imageStore(voxelDataImg, gid, uvec4(block, 0, 0, 0));
+
+	//uint idx = gid.x + gid.y * CHUNK_SIZE + gid.z * CHUNK_SIZE * CHUNK_SIZE;
+	//outData[idx] = block;
 }

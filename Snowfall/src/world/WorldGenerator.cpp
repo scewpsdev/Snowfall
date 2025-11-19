@@ -13,6 +13,9 @@ void InitWorldGenerator(WorldGenerator* generator)
 
 	generator->heightmapShader = LoadComputeShader("res/shaders/heightmap.cs.glsl.bin");
 	generator->noiseShader = LoadComputeShader("res/shaders/worldgen.cs.glsl.bin");
+
+	SDL_GPUSamplerCreateInfo samplerInfo = {};
+	generator->sampler = SDL_CreateGPUSampler(device, &samplerInfo);
 }
 
 static float SampleNoise(float x, float z, int octaves, float frequencyMultiplier, float amplitudeMultiplier)
@@ -99,12 +102,14 @@ struct UniformData
 	float numOctaves;
 };
 
-static void GenerateHeightmap(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuffer* outputBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+static void GenerateHeightmap(WorldGenerator* generator, Chunk* chunk, SDL_GPUTexture* outputTexture, SDL_GPUCommandBuffer* cmdBuffer)
 {
-	SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
-	bufferBinding.buffer = outputBuffer;
-	bufferBinding.cycle = false;
-	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
+	SDL_GPUStorageTextureReadWriteBinding textureBinding = {};
+	textureBinding.texture = outputTexture;
+	textureBinding.mip_level = 0;
+	textureBinding.layer = 0;
+	textureBinding.cycle = false;
+	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, &textureBinding, 1, nullptr, 0);
 	SDL_BindGPUComputePipeline(computePass, generator->heightmapShader->compute);
 
 	UniformData params = {};
@@ -121,12 +126,14 @@ static void GenerateHeightmap(WorldGenerator* generator, Chunk* chunk, SDL_GPUBu
 	SDL_EndGPUComputePass(computePass);
 }
 
-static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuffer* heightmapBuffer, SDL_GPUBuffer* outputBuffer, SDL_GPUTransferBuffer* readbackBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUTexture* heightmap, SDL_GPUTexture* outputTexture, SDL_GPUTransferBuffer* readbackBuffer, SDL_GPUCommandBuffer* cmdBuffer)
 {
-	SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
-	bufferBinding.buffer = outputBuffer;
-	bufferBinding.cycle = false;
-	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
+	SDL_GPUStorageTextureReadWriteBinding textureBinding = {};
+	textureBinding.texture = outputTexture;
+	textureBinding.mip_level = 0;
+	textureBinding.layer = 0;
+	textureBinding.cycle = false;
+	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, &textureBinding, 1, nullptr, 0);
 	SDL_BindGPUComputePipeline(computePass, generator->noiseShader->compute);
 
 	UniformData params = {};
@@ -138,8 +145,10 @@ static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuff
 	params.numOctaves = 5;
 	SDL_PushGPUComputeUniformData(cmdBuffer, 0, &params, sizeof(params));
 
-	SDL_GPUBuffer* inputBuffers[] = { heightmapBuffer };
-	SDL_BindGPUComputeStorageBuffers(computePass, 0, inputBuffers, 1);
+	SDL_GPUTextureSamplerBinding samplerBinding;
+	samplerBinding.texture = heightmap;
+	samplerBinding.sampler = generator->sampler;
+	SDL_BindGPUComputeSamplers(computePass, 0, &samplerBinding, 1);
 
 	SDL_DispatchGPUCompute(computePass, CHUNK_SIZE / 8, CHUNK_SIZE / 8, CHUNK_SIZE / 8);
 
@@ -147,16 +156,24 @@ static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuff
 
 	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
 
-	SDL_GPUBufferRegion src = {};
-	src.buffer = outputBuffer;
-	src.offset = 0;
-	src.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(float);
+	SDL_GPUTextureRegion src = {};
+	src.texture = outputTexture;
+	src.mip_level = 0;
+	src.layer = 0;
+	src.x = 0;
+	src.y = 0;
+	src.z = 0;
+	src.w = CHUNK_SIZE;
+	src.h = CHUNK_SIZE;
+	src.d = CHUNK_SIZE;
 
-	SDL_GPUTransferBufferLocation dst = {};
+	SDL_GPUTextureTransferInfo dst = {};
 	dst.transfer_buffer = readbackBuffer;
 	dst.offset = 0;
+	dst.pixels_per_row = CHUNK_SIZE;
+	dst.rows_per_layer = CHUNK_SIZE;
 
-	SDL_DownloadFromGPUBuffer(copyPass, &src, &dst);
+	SDL_DownloadFromGPUTexture(copyPass, &src, &dst);
 
 	SDL_EndGPUCopyPass(copyPass);
 }
@@ -169,8 +186,8 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 
 	SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
 
-	GenerateHeightmap(generator, chunk, threadData->heightmapOutputBuffer, cmdBuffer);
-	GenerateDensity(generator, chunk, threadData->heightmapOutputBuffer, threadData->noiseOutputBuffer, threadData->noiseReadbackBuffer, cmdBuffer);
+	GenerateHeightmap(generator, chunk, threadData->heightmap, cmdBuffer);
+	GenerateDensity(generator, chunk, threadData->heightmap, threadData->voxelData, threadData->noiseReadbackBuffer, cmdBuffer);
 
 	SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
 
@@ -233,7 +250,7 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	}
 	*/
 
-	uint32_t* blockData = (uint32_t*)SDL_MapGPUTransferBuffer(device, threadData->noiseReadbackBuffer, false);
+	uint8_t* blockData = (uint8_t*)SDL_MapGPUTransferBuffer(device, threadData->noiseReadbackBuffer, false);
 	SDL_assert(blockData);
 
 	for (int z = 0; z < CHUNK_SIZE; z++)

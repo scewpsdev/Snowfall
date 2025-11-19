@@ -155,18 +155,30 @@ static int ChunkGeneratorMain(void* ptr)
 	data->transferBuffer = SDL_CreateGPUTransferBuffer(device, &transferBufferInfo);
 	data->mappedTransferBuffer = SDL_MapGPUTransferBuffer(device, data->transferBuffer, false);
 
-	SDL_GPUBufferCreateInfo heightmapOutputBufferInfo = {};
-	heightmapOutputBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * sizeof(float);
-	heightmapOutputBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ;
-	data->heightmapOutputBuffer = SDL_CreateGPUBuffer(device, &heightmapOutputBufferInfo);
+	SDL_GPUTextureCreateInfo heightmapInfo = {};
+	heightmapInfo.type = SDL_GPU_TEXTURETYPE_2D;
+	heightmapInfo.format = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
+	heightmapInfo.usage = SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+	heightmapInfo.width = CHUNK_SIZE;
+	heightmapInfo.height = CHUNK_SIZE;
+	heightmapInfo.layer_count_or_depth = 1;
+	heightmapInfo.num_levels = 1;
+	heightmapInfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
+	data->heightmap = SDL_CreateGPUTexture(device, &heightmapInfo);
 
-	SDL_GPUBufferCreateInfo noiseOutputBufferInfo = {};
-	noiseOutputBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint32_t);
-	noiseOutputBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
-	data->noiseOutputBuffer = SDL_CreateGPUBuffer(device, &noiseOutputBufferInfo);
+	SDL_GPUTextureCreateInfo voxelDataInfo = {};
+	voxelDataInfo.type = SDL_GPU_TEXTURETYPE_3D;
+	voxelDataInfo.format = SDL_GPU_TEXTUREFORMAT_R8_UINT;
+	voxelDataInfo.usage = SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+	voxelDataInfo.width = CHUNK_SIZE;
+	voxelDataInfo.height = CHUNK_SIZE;
+	voxelDataInfo.layer_count_or_depth = CHUNK_SIZE;
+	voxelDataInfo.num_levels = 1;
+	voxelDataInfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
+	data->voxelData = SDL_CreateGPUTexture(device, &voxelDataInfo);
 
 	SDL_GPUTransferBufferCreateInfo noiseReadbackBufferInfo = {};
-	noiseReadbackBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint32_t);
+	noiseReadbackBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint8_t);
 	noiseReadbackBufferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
 	data->noiseReadbackBuffer = SDL_CreateGPUTransferBuffer(device, &noiseReadbackBufferInfo);
 

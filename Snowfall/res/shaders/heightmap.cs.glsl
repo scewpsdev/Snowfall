@@ -6,9 +6,13 @@
 
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
+/*
 layout(std430, set = 1, binding = 0) writeonly buffer OutData {
 	float outData[];
 };
+*/
+
+layout(set = 1, binding = 0, r32f) uniform image2D heightmapImg;
 
 layout(std140, set = 2, binding = 0) uniform Params {
 	ivec4 chunkPositionScale;
@@ -74,6 +78,8 @@ void main()
 	float noise = fbm(worldPosition * baseFrequency);
 	float height = noise * 100;
 
-	uint idx = gid.x + gid.y * CHUNK_SIZE;
-	outData[idx] = height;
+	imageStore(heightmapImg, gid.xy, vec4(height, 0, 0, 0));
+
+	//uint idx = gid.x + gid.y * CHUNK_SIZE;
+	//outData[idx] = height;
 }

@@ -115,8 +115,8 @@ struct ChunkGeneratorThreadData
 	SDL_GPUTransferBuffer* transferBuffer;
 	void* mappedTransferBuffer;
 
-	SDL_GPUBuffer* heightmapOutputBuffer;
-	SDL_GPUBuffer* noiseOutputBuffer;
+	SDL_GPUTexture* heightmap;
+	SDL_GPUTexture* voxelData;
 	SDL_GPUTransferBuffer* noiseReadbackBuffer;
 	SDL_GPUCommandBuffer* noiseCommandBuffer;
 

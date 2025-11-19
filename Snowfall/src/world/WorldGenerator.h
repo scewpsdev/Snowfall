@@ -17,6 +17,8 @@ struct WorldGenerator
 
 	Shader* heightmapShader;
 	Shader* noiseShader;
+
+	SDL_GPUSampler* sampler;
 };
 
 
