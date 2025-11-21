@@ -1,0 +1,116 @@
+#version 460
+
+
+#define CHUNK_SIZE 32
+
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in; // 8*8*8 = 512 threads
+
+layout(std430, set = 0, binding = 0) readonly buffer MaskData {
+	uint faceMasks[];
+};
+
+layout(std430, set = 1, binding = 0) buffer FaceData {
+	uint faceData[];
+};
+
+layout(std430, set = 1, binding = 1) buffer Counter {
+	coherent uint faceCounter;
+};
+
+layout(std140, set = 2, binding = 0) uniform Params {
+	ivec4 faceParams;
+
+#define faceIdx faceParams.x
+};
+
+
+ivec3 getSliceCoord(ivec2 uv, int slice, int axis)
+{
+	ivec3 coord =
+		axis == 0 ? ivec3(slice, uv.y, uv.x) :
+		axis == 1 ? ivec3(uv.x, slice, uv.y) :
+		axis == 2 ? ivec3(uv, slice) :
+		ivec3(0, 0, 0);
+	return coord;
+}
+
+bool isFacePresent(ivec3 coord)
+{
+	uint idx = coord.x + coord.y * CHUNK_SIZE + coord.z * CHUNK_SIZE * CHUNK_SIZE;
+	uint faceMask = faceMasks[idx] >> 8;
+	uint faceBit = 1 << faceIdx;
+	bool facePresent = (faceMask & faceBit) != 0;
+	return facePresent;
+}
+
+uint getBlock(ivec3 coord)
+{
+	uint idx = coord.x + coord.y * CHUNK_SIZE + coord.z * CHUNK_SIZE * CHUNK_SIZE;
+	uint block = faceMasks[idx] & 0xFF;
+	return block;
+}
+
+uint encodeFaceData(int x, int y, int z, int w, int h, int face, uint block)
+{
+	uint data = 0;
+	data |= x;
+	data |= (y << 5);
+	data |= (z << 10);
+	data |= ((w - 1) << 15);
+	data |= ((h - 1) << 20);
+	data |= (face << 25);
+	data |= (block << 28);
+
+	return data;
+}
+
+void main()
+{
+	ivec3 gid = ivec3(gl_GlobalInvocationID);
+	
+	ivec2 uv = gid.xy;
+	int slice = gid.z;
+	int axis = faceIdx / 2;
+	ivec3 coord = getSliceCoord(uv, slice, axis);
+	
+	if (!isFacePresent(coord))
+		return;
+
+	bool leftEdge = uv.x == 0 || !isFacePresent(getSliceCoord(uv + ivec2(-1, 0), slice, axis)); // || left block type != current block type
+	bool topEdge = uv.y == 0 || !isFacePresent(getSliceCoord(uv + ivec2(0, -1), slice, axis)); // || top block type != current block type
+	bool faceOwning = leftEdge && topEdge;
+	if (!faceOwning)
+		return;
+
+	int w = 1, h = 1;
+	for (int x = uv.x + 1; x < CHUNK_SIZE; x++)
+	{
+		ivec3 nextCoord = getSliceCoord(ivec2(x, uv.y), slice, axis);
+		if (!isFacePresent(nextCoord)) // || block not the same
+			break;
+		w++;
+	}
+	for (int y = uv.y + 1; y < CHUNK_SIZE; y++)
+	{
+		bool rowMatches = true;
+		for (int x = uv.x; x < uv.x + w; x++)
+		{
+			ivec3 nextCoord = getSliceCoord(ivec2(x, y), slice, axis);
+			if (!isFacePresent(nextCoord)) // || block not the same
+			{
+				rowMatches = false;
+				break;
+			}
+		}
+		if (!rowMatches)
+			break;
+		h++;
+	}
+
+	uint block = getBlock(coord);
+
+	uint idx = atomicAdd(faceCounter, 1);
+	uint face = encodeFaceData(coord.x, coord.y, coord.z, w, h, faceIdx, block);
+	faceData[idx] = face;
+}

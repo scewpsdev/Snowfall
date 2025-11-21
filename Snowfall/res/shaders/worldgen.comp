@@ -130,7 +130,8 @@ void main()
 	const float squashingFactor = 0.02f;
 	density += (height - worldPosition.y) * squashingFactor;
 
-	uint block = density > 0 ? 1 : worldPosition.y < 0 ? 3 : 0;
+	//uint block = density > 0 ? 1 : worldPosition.y < 0 ? 3 : 0;
+	uint block = density > 0 ? 1 : 0;
 
 	imageStore(voxelDataImg, gid, uvec4(block, 0, 0, 0));
 

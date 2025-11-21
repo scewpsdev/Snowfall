@@ -11,8 +11,11 @@ void InitWorldGenerator(WorldGenerator* generator)
 	generator->seed = 12345;
 	generator->random = Random(generator->seed);
 
-	generator->heightmapShader = LoadComputeShader("res/shaders/heightmap.cs.glsl.bin");
-	generator->noiseShader = LoadComputeShader("res/shaders/worldgen.cs.glsl.bin");
+	generator->heightmapShader = LoadComputeShader("res/shaders/heightmap.comp.bin");
+	generator->noiseShader = LoadComputeShader("res/shaders/worldgen.comp.bin");
+
+	generator->faceDetectShader = LoadComputeShader("res/shaders/mesh_face_detect.comp.bin");
+	generator->vertexGenShader = LoadComputeShader("res/shaders/mesh_vertex_gen.comp.bin");
 
 	SDL_GPUSamplerCreateInfo samplerInfo = {};
 	generator->sampler = SDL_CreateGPUSampler(device, &samplerInfo);
@@ -91,17 +94,6 @@ static float PeaksAndValleys(WorldGenerator* generator, int worldX, int worldZ)
 	return noise;
 }
 
-struct UniformData
-{
-	ivec3 chunkPosition;
-	int chunkScale;
-
-	float baseFrequency;
-	float frequencyMultiplier;
-	float amplitudeMultiplier;
-	float numOctaves;
-};
-
 static void GenerateHeightmap(WorldGenerator* generator, Chunk* chunk, SDL_GPUTexture* outputTexture, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	SDL_GPUStorageTextureReadWriteBinding textureBinding = {};
@@ -112,6 +104,16 @@ static void GenerateHeightmap(WorldGenerator* generator, Chunk* chunk, SDL_GPUTe
 	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, &textureBinding, 1, nullptr, 0);
 	SDL_BindGPUComputePipeline(computePass, generator->heightmapShader->compute);
 
+	struct UniformData
+	{
+		ivec3 chunkPosition;
+		int chunkScale;
+
+		float baseFrequency;
+		float frequencyMultiplier;
+		float amplitudeMultiplier;
+		float numOctaves;
+	};
 	UniformData params = {};
 	params.chunkPosition = chunk->position;
 	params.chunkScale = chunk->chunkScale;
@@ -136,6 +138,16 @@ static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUText
 	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, &textureBinding, 1, nullptr, 0);
 	SDL_BindGPUComputePipeline(computePass, generator->noiseShader->compute);
 
+	struct UniformData
+	{
+		ivec3 chunkPosition;
+		int chunkScale;
+
+		float baseFrequency;
+		float frequencyMultiplier;
+		float amplitudeMultiplier;
+		float numOctaves;
+	};
 	UniformData params = {};
 	params.chunkPosition = chunk->position;
 	params.chunkScale = chunk->chunkScale;
@@ -178,23 +190,77 @@ static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUText
 	SDL_EndGPUCopyPass(copyPass);
 }
 
+static void GenerateMeshDetectFaces(WorldGenerator* generator, Chunk* chunk, SDL_GPUTexture* voxelData, SDL_GPUBuffer* outputBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+{
+	SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
+	bufferBinding.buffer = outputBuffer;
+	bufferBinding.cycle = false;
+	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
+	SDL_BindGPUComputePipeline(computePass, generator->faceDetectShader->compute);
+
+	SDL_GPUTextureSamplerBinding samplerBinding;
+	samplerBinding.texture = voxelData;
+	samplerBinding.sampler = generator->sampler;
+	SDL_BindGPUComputeSamplers(computePass, 0, &samplerBinding, 1);
+
+	SDL_DispatchGPUCompute(computePass, CHUNK_SIZE / 8, CHUNK_SIZE / 8, CHUNK_SIZE / 8);
+
+	SDL_EndGPUComputePass(computePass);
+}
+
+static void GenerateMeshGenVertices(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuffer* faceMaskBuffer, SDL_GPUBuffer* outputBuffer, SDL_GPUBuffer* counterBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+{
+	SDL_GPUStorageBufferReadWriteBinding bufferBindings[2];
+	bufferBindings[0] = {};
+	bufferBindings[0].buffer = outputBuffer;
+	bufferBindings[0].cycle = false;
+	bufferBindings[1] = {};
+	bufferBindings[1].buffer = counterBuffer;
+	bufferBindings[1].cycle = false;
+	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, bufferBindings, 2);
+	SDL_BindGPUComputePipeline(computePass, generator->vertexGenShader->compute);
+
+	SDL_BindGPUComputeStorageBuffers(computePass, 0, &faceMaskBuffer, 1);
+
+	struct UniformData
+	{
+		ivec4 params;
+	};
+	UniformData uniformData = {};
+
+	for (int i = 0; i < 6; i++)
+	{
+		uniformData.params.x = i; // faceIdx
+		SDL_PushGPUComputeUniformData(cmdBuffer, 0, &uniformData, sizeof(uniformData));
+		SDL_DispatchGPUCompute(computePass, CHUNK_SIZE / 8, CHUNK_SIZE / 8, CHUNK_SIZE / 8);
+	}
+
+	SDL_EndGPUComputePass(computePass);
+}
+
 void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadData, Chunk* chunk)
 {
 	uint64_t before = SDL_GetTicksNS();
 
-	chunk->isEmpty = true;
+	//chunk->isEmpty = true;
 
 	SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
 
 	GenerateHeightmap(generator, chunk, threadData->heightmap, cmdBuffer);
 	GenerateDensity(generator, chunk, threadData->heightmap, threadData->voxelData, threadData->noiseReadbackBuffer, cmdBuffer);
+	GenerateMeshDetectFaces(generator, chunk, threadData->voxelData, threadData->faceMaskBuffer, cmdBuffer);
+	GenerateMeshGenVertices(generator, chunk, threadData->faceMaskBuffer, threadData->faceMeshBuffer, threadData->faceCounterBuffer, cmdBuffer);
 
+	SDL_SubmitGPUCommandBuffer(cmdBuffer);
+
+	/*
 	SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
 
 	if (!SDL_WaitForGPUFences(device, true, &fence, 1))
 		SDL_LogError(SDL_LOG_CATEGORY_GPU, "%s", SDL_GetError());
 
 	SDL_ReleaseGPUFence(device, fence);
+	*/
 
 	// TODO
 	// worldgen write to texture memory
@@ -250,6 +316,7 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	}
 	*/
 
+	/*
 	uint8_t* blockData = (uint8_t*)SDL_MapGPUTransferBuffer(device, threadData->noiseReadbackBuffer, false);
 	SDL_assert(blockData);
 
@@ -272,7 +339,7 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 				density += (terrainHeight - worldY) * squashingFactor;
 
 				block->id = density > 0 ? BLOCK_TYPE_STONE : worldY < 0 ? BLOCK_TYPE_WATER : BLOCK_TYPE_NONE;
-				*/
+				*
 
 				BlockData* block = chunk->getBlockData(x, y, z);
 
@@ -284,6 +351,7 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	}
 
 	SDL_UnmapGPUTransferBuffer(device, threadData->noiseReadbackBuffer);
+	*/
 
 	uint64_t after = SDL_GetTicksNS();
 	SDL_Log("worldgen %.2f ms", (after - before) / 1e6f);

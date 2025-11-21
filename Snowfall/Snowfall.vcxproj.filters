@@ -205,15 +205,17 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\shaders\chunk.vs.glsl" />
-    <None Include="res\shaders\chunk.fs.glsl" />
-    <None Include="res\shaders\screenquad.fs.glsl" />
-    <None Include="res\shaders\screenquad.vs.glsl" />
-    <None Include="res\shaders\sprite.fs.glsl" />
-    <None Include="res\shaders\sprite.vs.glsl" />
-    <None Include="res\shaders\lighting.fs.glsl" />
-    <None Include="res\shaders\lighting.vs.glsl" />
-    <None Include="res\shaders\worldgen.cs.glsl" />
-    <None Include="res\shaders\heightmap.cs.glsl" />
+    <None Include="res\shaders\chunk.vert" />
+    <None Include="res\shaders\chunk.frag" />
+    <None Include="res\shaders\screenquad.frag" />
+    <None Include="res\shaders\screenquad.vert" />
+    <None Include="res\shaders\sprite.frag" />
+    <None Include="res\shaders\sprite.vert" />
+    <None Include="res\shaders\lighting.frag" />
+    <None Include="res\shaders\lighting.vert" />
+    <None Include="res\shaders\worldgen.comp" />
+    <None Include="res\shaders\heightmap.comp" />
+    <None Include="res\shaders\mesh_face_detect.comp" />
+    <None Include="res\shaders\mesh_vertex_gen.comp" />
   </ItemGroup>
 </Project>

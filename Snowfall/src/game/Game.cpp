@@ -177,6 +177,21 @@ static int ChunkGeneratorMain(void* ptr)
 	voxelDataInfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
 	data->voxelData = SDL_CreateGPUTexture(device, &voxelDataInfo);
 
+	SDL_GPUBufferCreateInfo faceMaskBufferInfo = {};
+	faceMaskBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint32_t);
+	faceMaskBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+	data->faceMaskBuffer = SDL_CreateGPUBuffer(device, &faceMaskBufferInfo);
+
+	SDL_GPUBufferCreateInfo meshBufferInfo = {};
+	meshBufferInfo.size = CHUNK_VERTEX_BUFFER_SIZE;
+	meshBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE | SDL_GPU_BUFFERUSAGE_VERTEX;
+	data->faceMeshBuffer = SDL_CreateGPUBuffer(device, &meshBufferInfo);
+
+	SDL_GPUBufferCreateInfo counterBufferInfo = {};
+	counterBufferInfo.size = sizeof(uint32_t);
+	counterBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
+	data->faceCounterBuffer = SDL_CreateGPUBuffer(device, &counterBufferInfo);
+
 	SDL_GPUTransferBufferCreateInfo noiseReadbackBufferInfo = {};
 	noiseReadbackBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint8_t);
 	noiseReadbackBufferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
@@ -266,10 +281,10 @@ void GameInit()
 	game->depthTexture = CreateDepthTarget(width, height);
 	game->gbuffer = CreateGBuffer(width, height);
 
-	game->chunkShader = LoadGraphicsShader("res/shaders/chunk.vs.glsl.bin", "res/shaders/chunk.fs.glsl.bin");
+	game->chunkShader = LoadGraphicsShader("res/shaders/chunk.vert.bin", "res/shaders/chunk.frag.bin");
 
-	AddFileWatcher(PROJECT_PATH "/res/shaders/chunk.vs.glsl");
-	AddFileWatcher(PROJECT_PATH "/res/shaders/chunk.fs.glsl");
+	AddFileWatcher(PROJECT_PATH "/res/shaders/chunk.vert");
+	AddFileWatcher(PROJECT_PATH "/res/shaders/chunk.frag");
 
 	GraphicsPipelineInfo cubePipelineInfo = CreateGraphicsPipelineInfo(game->chunkShader, 1, chunkBufferLayouts);
 	cubePipelineInfo.numColorTargets = GBUFFER_COLOR_ATTACHMENTS;
@@ -278,6 +293,7 @@ void GameInit()
 	cubePipelineInfo.colorTargets[2].format = game->gbuffer->colorAttachmentInfos[2].format;
 	cubePipelineInfo.hasDepthTarget = true;
 	cubePipelineInfo.depthFormat = game->gbuffer->depthAttachmentInfo.format;
+	cubePipelineInfo.bufferDescriptions[0].input_rate = SDL_GPU_VERTEXINPUTRATE_INSTANCE;
 	game->chunkPipeline = CreateGraphicsPipeline(&cubePipelineInfo);
 
 	game->chunkVertexBuffer = CreateVertexBuffer(MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE, &chunkBufferLayouts[0], nullptr, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE * sizeof(uint32_t), cmdBuffer);
@@ -285,7 +301,7 @@ void GameInit()
 	game->chunkDrawBuffer = CreateIndirectBuffer(MAX_LOADED_CHUNKS * 6, false);
 	game->chunkPalette = LoadTexture("res/textures/palette.png.bin", cmdBuffer);
 
-	game->lightingShader = LoadGraphicsShader("res/shaders/lighting.vs.glsl.bin", "res/shaders/lighting.fs.glsl.bin");
+	game->lightingShader = LoadGraphicsShader("res/shaders/lighting.vert.bin", "res/shaders/lighting.frag.bin");
 
 	{
 		GraphicsPipelineInfo pipelineInfo = {};
@@ -332,7 +348,7 @@ void GameInit()
 		game->chunkGenerators[i] = SDL_CreateThread(ChunkGeneratorMain, name, &game->chunkGeneratorsData[i]);
 	}
 
-	game->cameraPosition = vec3(0, 32, 0);
+	game->cameraPosition = vec3(0, 16, 32);
 	//game->cameraPitch = -0.4f * PI;
 	//game->cameraYaw = 0.25f * PI;
 
@@ -502,7 +518,7 @@ static void UpdateChunkGenerators()
 static void UpdateChunkVisibility()
 {
 	uint64_t before = SDL_GetTicksNS();
-	if (game->numLoadedChunks < MAX_LOADED_CHUNKS)
+	//if (game->numLoadedChunks < MAX_LOADED_CHUNKS)
 	{
 		bool found = false;
 		for (int lod = 0; lod < NUM_CHUNK_LOD_LEVELS; lod++)
@@ -536,6 +552,7 @@ static void UpdateChunkVisibility()
 										UnloadChunk(chunk);
 										game->lods[lod].chunkFlags[gridIdx] |= CHUNK_FLAG_EMPTY;
 									}
+									/*
 									else if (chunk->hasMesh && !chunk->needsMeshUpdate && chunk->getTotalVertexCount() == 0 || chunk->isEmpty)
 									{
 										int lod = chunk->lod;
@@ -543,6 +560,7 @@ static void UpdateChunkVisibility()
 										UnloadChunk(chunk);
 										game->lods[lod].chunkFlags[gridIdx] |= CHUNK_FLAG_SOLID;
 									}
+									*/
 									else if (chunk->needsMeshUpdate)
 									{
 										// only remesh
@@ -553,7 +571,7 @@ static void UpdateChunkVisibility()
 										}
 									}
 								}
-								else if (!flags && !chunk)
+								else if (!flags && !chunk && game->numLoadedChunks < MAX_LOADED_CHUNKS)
 								{
 									int generatorID;
 									if (!HasChunkGeneratorForPosition(position) && ChunkGeneratorAvailable(&generatorID))
@@ -579,15 +597,15 @@ static void UpdateChunkVisibility()
 									}
 								}
 							}
-							if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
+							//if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
 						}
-						if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
+						//if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
 					}
-					if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
+					//if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
 				}
-				if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
+				//if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
 			}
-			if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
+			//if (game->numLoadedChunks >= MAX_LOADED_CHUNKS) break;
 		}
 	}
 
@@ -597,12 +615,14 @@ static void UpdateChunkVisibility()
 
 void GameUpdate()
 {
-	if (FileHasChanged(PROJECT_PATH "/res/shaders/chunk.vs.glsl") || FileHasChanged(PROJECT_PATH "/res/shaders/chunk.fs.glsl"))
+	/*
+	if (FileHasChanged(PROJECT_PATH "/res/shaders/chunk.vert") || FileHasChanged(PROJECT_PATH "/res/shaders/chunk.frag"))
 	{
 		app->platformCallbacks.compileResources();
-		ReloadGraphicsShader(game->chunkShader, "res/shaders/chunk.vs.glsl.bin", "res/shaders/chunk.fs.glsl.bin");
+		ReloadGraphicsShader(game->chunkShader, "res/shaders/chunk.vert.bin", "res/shaders/chunk.frag.bin");
 		ReloadGraphicsPipeline(game->chunkPipeline);
 	}
+	*/
 
 	UpdateChunkVisibility();
 	UpdateChunkGenerators();
@@ -813,7 +833,31 @@ void GameRender()
 		bindings[0].sampler = game->defaultSampler;
 		SDL_BindGPUFragmentSamplers(renderPass, 0, bindings, 1);
 
-		SDL_DrawGPUPrimitivesIndirect(renderPass, game->chunkDrawBuffer->buffer, 0, numDrawCommands);
+		//SDL_DrawGPUPrimitivesIndirect(renderPass, game->chunkDrawBuffer->buffer, 0, numDrawCommands);
+
+		for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
+		{
+			SDL_GPUBufferBinding vertexBinding;
+			vertexBinding.buffer = game->chunkGeneratorsData[i].faceMeshBuffer;
+			vertexBinding.offset = 0;
+
+			SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
+
+			ChunkUniforms uniforms = {};
+			uniforms.pv = pv;
+			SDL_PushGPUVertexUniformData(cmdBuffer, 0, &uniforms, sizeof(uniforms));
+
+			SDL_GPUBuffer* storageBuffer = game->chunkStorageBuffer->buffer;
+			SDL_BindGPUVertexStorageBuffers(renderPass, 0, &storageBuffer, 1);
+
+			SDL_GPUTextureSamplerBinding bindings[1];
+			bindings[0] = {};
+			bindings[0].texture = game->chunkPalette->handle;
+			bindings[0].sampler = game->defaultSampler;
+			SDL_BindGPUFragmentSamplers(renderPass, 0, bindings, 1);
+
+			SDL_DrawGPUPrimitives(renderPass, 3, 4000, 0, 0);
+		}
 
 		SDL_EndGPURenderPass(renderPass);
 	}

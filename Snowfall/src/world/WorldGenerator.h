@@ -18,6 +18,10 @@ struct WorldGenerator
 	Shader* heightmapShader;
 	Shader* noiseShader;
 
+	// greedy meshing
+	Shader* faceDetectShader;
+	Shader* vertexGenShader;
+
 	SDL_GPUSampler* sampler;
 };
 

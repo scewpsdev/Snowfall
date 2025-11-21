@@ -95,7 +95,7 @@ static SDL_SharedObject* LoadGameCode(GameInit_t* init, GameDestroy_t* destroy, 
 
 static void CompileResources()
 {
-	system("D:\\Dev\\Rainfall\\RainfallResourceCompiler\\bin\\x64\\Release\\RainfallResourceCompiler.exe " PROJECT_PATH "\\res res png ogg vsh fsh csh glsl ttf rfs gltf");
+	system("D:\\Dev\\Rainfall\\RainfallResourceCompiler\\bin\\x64\\Release\\RainfallResourceCompiler.exe " PROJECT_PATH "\\res res png ogg vsh fsh csh glsl vert frag comp ttf rfs gltf");
 }
 
 static void InitPlatformCallbacks(PlatformCallbacks* callbacks)

@@ -3,7 +3,7 @@
 #include "graphics/VertexBuffer.h"
 
 
-#define MAX_LOADED_CHUNKS 8192
+#define MAX_LOADED_CHUNKS 1 //8192
 
 
 struct ChunkAllocation
