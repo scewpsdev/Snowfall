@@ -132,6 +132,7 @@ void main()
 
 	//uint block = density > 0 ? 1 : worldPosition.y < 0 ? 3 : 0;
 	uint block = density > 0 ? 1 : 0;
+	//block = density > 0 ? ((gid.x + gid.z + gid.y) % 16 + 1) : 0;
 
 	imageStore(voxelDataImg, gid, uvec4(block, 0, 0, 0));
 

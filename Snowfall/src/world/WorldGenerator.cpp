@@ -16,6 +16,7 @@ void InitWorldGenerator(WorldGenerator* generator)
 
 	generator->faceDetectShader = LoadComputeShader("res/shaders/mesh_face_detect.comp.bin");
 	generator->vertexGenShader = LoadComputeShader("res/shaders/mesh_vertex_gen.comp.bin");
+	generator->clearBufferShader = LoadComputeShader("res/shaders/clear_buffer.comp.bin");
 
 	SDL_GPUSamplerCreateInfo samplerInfo = {};
 	generator->sampler = SDL_CreateGPUSampler(device, &samplerInfo);
@@ -210,6 +211,19 @@ static void GenerateMeshDetectFaces(WorldGenerator* generator, Chunk* chunk, SDL
 
 static void GenerateMeshGenVertices(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuffer* faceMaskBuffer, SDL_GPUBuffer* outputBuffer, SDL_GPUBuffer* counterBuffer, SDL_GPUCommandBuffer* cmdBuffer)
 {
+	// clear claimed buffer and counter
+	{
+		SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
+		bufferBinding.buffer = counterBuffer;
+		bufferBinding.cycle = false;
+		SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
+		SDL_BindGPUComputePipeline(computePass, generator->clearBufferShader->compute);
+
+		SDL_DispatchGPUCompute(computePass, (1 + CHUNK_SIZE * CHUNK_SIZE * 6 + 255) / 256, 1, 1);
+
+		SDL_EndGPUComputePass(computePass);
+	}
+
 	SDL_GPUStorageBufferReadWriteBinding bufferBindings[2];
 	bufferBindings[0] = {};
 	bufferBindings[0].buffer = outputBuffer;
@@ -222,18 +236,7 @@ static void GenerateMeshGenVertices(WorldGenerator* generator, Chunk* chunk, SDL
 
 	SDL_BindGPUComputeStorageBuffers(computePass, 0, &faceMaskBuffer, 1);
 
-	struct UniformData
-	{
-		ivec4 params;
-	};
-	UniformData uniformData = {};
-
-	for (int i = 0; i < 6; i++)
-	{
-		uniformData.params.x = i; // faceIdx
-		SDL_PushGPUComputeUniformData(cmdBuffer, 0, &uniformData, sizeof(uniformData));
-		SDL_DispatchGPUCompute(computePass, CHUNK_SIZE / 8, CHUNK_SIZE / 8, CHUNK_SIZE / 8);
-	}
+	SDL_DispatchGPUCompute(computePass, 1, 1, 6);
 
 	SDL_EndGPUComputePass(computePass);
 }

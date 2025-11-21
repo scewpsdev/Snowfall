@@ -21,6 +21,7 @@ struct WorldGenerator
 	// greedy meshing
 	Shader* faceDetectShader;
 	Shader* vertexGenShader;
+	Shader* clearBufferShader;
 
 	SDL_GPUSampler* sampler;
 };

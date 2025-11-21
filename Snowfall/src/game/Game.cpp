@@ -188,7 +188,7 @@ static int ChunkGeneratorMain(void* ptr)
 	data->faceMeshBuffer = SDL_CreateGPUBuffer(device, &meshBufferInfo);
 
 	SDL_GPUBufferCreateInfo counterBufferInfo = {};
-	counterBufferInfo.size = sizeof(uint32_t);
+	counterBufferInfo.size = sizeof(uint32_t) + CHUNK_SIZE * CHUNK_SIZE * 6 * sizeof(uint32_t);
 	counterBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
 	data->faceCounterBuffer = SDL_CreateGPUBuffer(device, &counterBufferInfo);
 
@@ -856,7 +856,7 @@ void GameRender()
 			bindings[0].sampler = game->defaultSampler;
 			SDL_BindGPUFragmentSamplers(renderPass, 0, bindings, 1);
 
-			SDL_DrawGPUPrimitives(renderPass, 3, 4000, 0, 0);
+			SDL_DrawGPUPrimitives(renderPass, 3, 1079, 0, 0);
 		}
 
 		SDL_EndGPURenderPass(renderPass);

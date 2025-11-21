@@ -215,6 +215,7 @@
   <ItemGroup>
     <None Include="res\shaders\chunk.frag" />
     <None Include="res\shaders\chunk.vert" />
+    <None Include="res\shaders\clear_buffer.comp" />
     <None Include="res\shaders\mesh_face_detect.comp" />
     <None Include="res\shaders\heightmap.comp" />
     <None Include="res\shaders\lighting.frag" />
