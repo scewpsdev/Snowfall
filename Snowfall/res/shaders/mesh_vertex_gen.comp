@@ -19,6 +19,12 @@ layout(std430, set = 1, binding = 1) buffer Counter {
 	uint claimed[];
 };
 
+layout(std140, set = 2, binding = 0) uniform Params {
+	ivec4 data0;
+
+#define vertexBufferOffset data0.x
+};
+
 
 ivec3 getSliceCoord(ivec2 uv, int slice, int axis)
 {
@@ -123,7 +129,7 @@ void main()
 
 			uint idx = atomicAdd(faceCounter, 1);
 			uint face = encodeFaceData(coord.x, coord.y, coord.z, w, h, faceIdx, block);
-			faceData[idx] = face;
+			faceData[vertexBufferOffset + idx] = face;
 		}
 	}
 }

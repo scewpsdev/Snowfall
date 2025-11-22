@@ -123,10 +123,12 @@ static void UnloadChunk(Chunk* chunk)
 		}
 	}
 
+	/*
 	int vertexOffset = chunk->vertexOffsets[0];
 	int vertexCount = chunk->getTotalVertexCount();
 	if (vertexCount > 0)
 		DeallocateChunk(&game->chunkAllocator, vertexOffset, vertexCount);
+	*/
 
 	int gridIdx = GetChunkGridIdxFromPosition(chunk->position, chunk->lod);
 	SDL_assert(gridIdx != -1);
@@ -166,36 +168,15 @@ static int ChunkGeneratorMain(void* ptr)
 	heightmapInfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
 	data->heightmap = SDL_CreateGPUTexture(device, &heightmapInfo);
 
-	SDL_GPUTextureCreateInfo voxelDataInfo = {};
-	voxelDataInfo.type = SDL_GPU_TEXTURETYPE_3D;
-	voxelDataInfo.format = SDL_GPU_TEXTUREFORMAT_R8_UINT;
-	voxelDataInfo.usage = SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
-	voxelDataInfo.width = CHUNK_SIZE;
-	voxelDataInfo.height = CHUNK_SIZE;
-	voxelDataInfo.layer_count_or_depth = CHUNK_SIZE;
-	voxelDataInfo.num_levels = 1;
-	voxelDataInfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
-	data->voxelData = SDL_CreateGPUTexture(device, &voxelDataInfo);
-
 	SDL_GPUBufferCreateInfo faceMaskBufferInfo = {};
 	faceMaskBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint32_t);
 	faceMaskBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
 	data->faceMaskBuffer = SDL_CreateGPUBuffer(device, &faceMaskBufferInfo);
 
-	SDL_GPUBufferCreateInfo meshBufferInfo = {};
-	meshBufferInfo.size = CHUNK_VERTEX_BUFFER_SIZE;
-	meshBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE | SDL_GPU_BUFFERUSAGE_VERTEX;
-	data->faceMeshBuffer = SDL_CreateGPUBuffer(device, &meshBufferInfo);
-
 	SDL_GPUBufferCreateInfo counterBufferInfo = {};
 	counterBufferInfo.size = sizeof(uint32_t) + CHUNK_SIZE * CHUNK_SIZE * 6 * sizeof(uint32_t);
 	counterBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
 	data->faceCounterBuffer = SDL_CreateGPUBuffer(device, &counterBufferInfo);
-
-	SDL_GPUTransferBufferCreateInfo noiseReadbackBufferInfo = {};
-	noiseReadbackBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint8_t);
-	noiseReadbackBufferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-	data->noiseReadbackBuffer = SDL_CreateGPUTransferBuffer(device, &noiseReadbackBufferInfo);
 
 	data->running = true;
 	while (data->running)
@@ -296,7 +277,19 @@ void GameInit()
 	cubePipelineInfo.bufferDescriptions[0].input_rate = SDL_GPU_VERTEXINPUTRATE_INSTANCE;
 	game->chunkPipeline = CreateGraphicsPipeline(&cubePipelineInfo);
 
-	game->chunkVertexBuffer = CreateVertexBuffer(MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE, &chunkBufferLayouts[0], nullptr, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE * sizeof(uint32_t), cmdBuffer);
+	game->chunkVertexBuffer = CreateVertexBuffer(MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE, &chunkBufferLayouts[0], SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, nullptr, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE * sizeof(uint32_t), cmdBuffer);
+
+	SDL_GPUTextureCreateInfo chunkTextureInfo = {};
+	chunkTextureInfo.type = SDL_GPU_TEXTURETYPE_3D;
+	chunkTextureInfo.format = SDL_GPU_TEXTUREFORMAT_R8_UINT;
+	chunkTextureInfo.usage = SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+	chunkTextureInfo.width = CHUNK_TEXTURE_WIDTH * CHUNK_SIZE;
+	chunkTextureInfo.height = CHUNK_TEXTURE_WIDTH * CHUNK_SIZE;
+	chunkTextureInfo.layer_count_or_depth = CHUNK_TEXTURE_WIDTH * CHUNK_SIZE;
+	chunkTextureInfo.num_levels = 1;
+	chunkTextureInfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
+	game->chunkTexture = SDL_CreateGPUTexture(device, &chunkTextureInfo);
+
 	game->chunkStorageBuffer = CreateStorageBuffer(nullptr, MAX_LOADED_CHUNKS * 6 * sizeof(ChunkData), cmdBuffer);
 	game->chunkDrawBuffer = CreateIndirectBuffer(MAX_LOADED_CHUNKS * 6, false);
 	game->chunkPalette = LoadTexture("res/textures/palette.png.bin", cmdBuffer);
@@ -335,7 +328,7 @@ void GameInit()
 	SDL_GPUSamplerCreateInfo samplerInfo = {};
 	game->defaultSampler = SDL_CreateGPUSampler(device, &samplerInfo);
 
-	InitChunkAllocator(&game->chunkAllocator, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE);
+	//InitChunkAllocator(&game->chunkAllocator);
 
 	InitWorldGenerator(&game->worldGenerator);
 
@@ -481,24 +474,6 @@ static void UpdateChunkGenerators()
 				SDL_assert(chunk->id == data->chunk.id && chunk->position == data->chunk.position && chunk->lod == data->chunk.lod);
 				*chunk = data->chunk;
 
-				if (data->remesh)
-				{
-					SDL_memcpy(chunk->vertexOffsets, data->mesher.vertexOffsets, sizeof(data->mesher.vertexOffsets));
-					SDL_memcpy(chunk->vertexCounts, data->mesher.vertexCounts, sizeof(data->mesher.vertexCounts));
-
-					if (data->mesher.numVertices > 0)
-					{
-						SDL_assert(data->mesher.numVertices <= CHUNK_VERTEX_BUFFER_SIZE);
-
-						int offset = AllocateChunk(&game->chunkAllocator, data->mesher.numVertices);
-
-						for (int i = 0; i < 6; i++)
-							chunk->vertexOffsets[i] += offset;
-
-						UpdateVertexBuffer(game->chunkVertexBuffer, chunk->vertexOffsets[0] * sizeof(uint32_t), (uint8_t*)data->mesher.vertexData, data->mesher.numVertices * sizeof(uint32_t), data->transferBuffer, data->mappedTransferBuffer, cmdBuffer);
-					}
-				}
-
 				chunk->isLoaded = true;
 			}
 
@@ -507,7 +482,6 @@ static void UpdateChunkGenerators()
 			data->hasFinished = false;
 
 			SDL_UnlockMutex(data->mutex);
-
 		}
 	}
 
@@ -838,8 +812,8 @@ void GameRender()
 		for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
 		{
 			SDL_GPUBufferBinding vertexBinding;
-			vertexBinding.buffer = game->chunkGeneratorsData[i].faceMeshBuffer;
-			vertexBinding.offset = 0;
+			vertexBinding.buffer = game->chunkVertexBuffer->buffer;
+			vertexBinding.offset = game->chunkGeneratorsData[i].chunk.getVertexBufferOffset() * sizeof(uint32_t);
 
 			SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
 

@@ -29,7 +29,6 @@
 #include "world/WorldGenerator.h"
 #include "world/Chunk.h"
 #include "world/ChunkMesher.h"
-#include "world/ChunkAllocator.h"
 
 
 #define PROJECT_PATH "D:\\Dev\\Snowfall\\Snowfall"
@@ -116,12 +115,8 @@ struct ChunkGeneratorThreadData
 	void* mappedTransferBuffer;
 
 	SDL_GPUTexture* heightmap;
-	SDL_GPUTexture* voxelData;
 	SDL_GPUBuffer* faceMaskBuffer;
-	SDL_GPUBuffer* faceMeshBuffer;
 	SDL_GPUBuffer* faceCounterBuffer;
-	SDL_GPUTransferBuffer* noiseReadbackBuffer;
-	SDL_GPUCommandBuffer* noiseCommandBuffer;
 
 	Chunk chunk;
 	bool generate;
@@ -150,8 +145,8 @@ struct GameState
 	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
 
 	WorldGenerator worldGenerator;
-	ChunkAllocator chunkAllocator;
 	VertexBuffer* chunkVertexBuffer;
+	SDL_GPUTexture* chunkTexture;
 
 	StorageBuffer* chunkStorageBuffer;
 	IndirectBuffer* chunkDrawBuffer;

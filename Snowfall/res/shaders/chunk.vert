@@ -115,8 +115,7 @@ void main()
 	ivec3 chunkPosition = chunkPositionScale.xyz;
 	int chunkSize = chunkPositionScale.w;
 
-	//vec3 worldPosition = chunkPosition + (blockPosition + vertexPosition) * chunkSize;
-	vec3 worldPosition = blockPosition + vertexPosition;
+	vec3 worldPosition = chunkPosition + (blockPosition + vertexPosition) * chunkSize;
 
 	gl_Position = pv * vec4(worldPosition, 1);
 

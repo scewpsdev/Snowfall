@@ -12,13 +12,20 @@ layout(std430, set = 1, binding = 0) writeonly buffer MaskData {
 	uint faceMasks[];
 };
 
+layout(std140, set = 2, binding = 0) uniform Params {
+	ivec4 data0;
+
+#define chunkTextureOffset data0.xyz
+};
+
 
 void main()
 {
 	ivec3 gid = ivec3(gl_GlobalInvocationID);
 	uint idx = gid.x + gid.y * CHUNK_SIZE + gid.z * CHUNK_SIZE * CHUNK_SIZE;
+	ivec3 sampleCoord = chunkTextureOffset + gid;
 
-	uint block = texelFetch(voxelData, gid, 0).r;
+	uint block = texelFetch(voxelData, sampleCoord, 0).r;
 	if (block == 0)
 	{
 		faceMasks[idx] = 0;
@@ -34,12 +41,12 @@ void main()
 
 	uint faceMask = 0;
 
-	if (gid.x == 0 || texelFetch(voxelData, gid + ivec3(-1, 0, 0), 0).r == 0) faceMask |= FACE_X_NEG;
-	if (gid.x == CHUNK_SIZE - 1 || texelFetch(voxelData, gid + ivec3(1, 0, 0), 0).r == 0) faceMask |= FACE_X_POS;
-	if (gid.y == 0 || texelFetch(voxelData, gid + ivec3(0, -1, 0), 0).r == 0) faceMask |= FACE_Y_NEG;
-	if (gid.y == CHUNK_SIZE - 1 || texelFetch(voxelData, gid + ivec3(0, 1, 0), 0).r == 0) faceMask |= FACE_Y_POS;
-	if (gid.z == 0 || texelFetch(voxelData, gid + ivec3(0, 0, -1), 0).r == 0) faceMask |= FACE_Z_NEG;
-	if (gid.z == CHUNK_SIZE - 1 || texelFetch(voxelData, gid + ivec3(0, 0, 1), 0).r == 0) faceMask |= FACE_Z_POS;
+	if (gid.x == 0 || texelFetch(voxelData, sampleCoord + ivec3(-1, 0, 0), 0).r == 0) faceMask |= FACE_X_NEG;
+	if (gid.x == CHUNK_SIZE - 1 || texelFetch(voxelData, sampleCoord + ivec3(1, 0, 0), 0).r == 0) faceMask |= FACE_X_POS;
+	if (gid.y == 0 || texelFetch(voxelData, sampleCoord + ivec3(0, -1, 0), 0).r == 0) faceMask |= FACE_Y_NEG;
+	if (gid.y == CHUNK_SIZE - 1 || texelFetch(voxelData, sampleCoord + ivec3(0, 1, 0), 0).r == 0) faceMask |= FACE_Y_POS;
+	if (gid.z == 0 || texelFetch(voxelData, sampleCoord + ivec3(0, 0, -1), 0).r == 0) faceMask |= FACE_Z_NEG;
+	if (gid.z == CHUNK_SIZE - 1 || texelFetch(voxelData, sampleCoord + ivec3(0, 0, 1), 0).r == 0) faceMask |= FACE_Z_POS;
 
 	uint packed = (block & 0xFF) | faceMask << 8;
 	faceMasks[idx] = packed;

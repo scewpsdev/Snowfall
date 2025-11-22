@@ -21,15 +21,17 @@ layout(set = 0, binding = 0) uniform sampler2D heightmap;
 layout(set = 1, binding = 0, r8ui) uniform uimage3D voxelDataImg;
 
 layout(std140, set = 2, binding = 0) uniform Params {
-	ivec4 chunkPositionScale;
-	vec4 octaveParams;
+	ivec4 data0;
+	ivec4 data1;
+	vec4 data2;
 
-#define chunkPosition chunkPositionScale.xyz
-#define chunkScale chunkPositionScale.w
-#define baseFrequency octaveParams.x
-#define frequencyMultiplier octaveParams.y
-#define amplitudeMultiplier octaveParams.z
-#define numOctaves octaveParams.w
+#define chunkPosition data0.xyz
+#define chunkScale data0.w
+#define chunkTextureOffset data1.xyz
+#define baseFrequency data2.x
+#define frequencyMultiplier data2.y
+#define amplitudeMultiplier data2.z
+#define numOctaves data2.w
 };
 
 
@@ -134,7 +136,7 @@ void main()
 	uint block = density > 0 ? 1 : 0;
 	//block = density > 0 ? ((gid.x + gid.z + gid.y) % 16 + 1) : 0;
 
-	imageStore(voxelDataImg, gid, uvec4(block, 0, 0, 0));
+	imageStore(voxelDataImg, chunkTextureOffset + gid, uvec4(block, 0, 0, 0));
 
 	//uint idx = gid.x + gid.y * CHUNK_SIZE + gid.z * CHUNK_SIZE * CHUNK_SIZE;
 	//outData[idx] = block;

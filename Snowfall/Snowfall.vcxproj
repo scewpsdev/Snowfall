@@ -167,7 +167,6 @@
     <ClCompile Include="src\Application.cpp" />
     <ClCompile Include="src\renderer\Renderer2D.cpp" />
     <ClCompile Include="src\renderer\ScreenQuad.cpp" />
-    <ClCompile Include="src\world\ChunkAllocator.cpp" />
     <ClCompile Include="src\world\ChunkMesher.cpp" />
     <ClCompile Include="src\Resource.cpp" />
     <ClCompile Include="src\utils\Hash.cpp" />
@@ -204,7 +203,6 @@
     <ClInclude Include="src\utils\HashMap.h" />
     <ClInclude Include="src\utils\List.h" />
     <ClInclude Include="src\utils\uint128_t.h" />
-    <ClInclude Include="src\world\ChunkAllocator.h" />
     <ClInclude Include="src\world\ChunkMesher.h" />
     <ClInclude Include="src\utils\Random.h" />
     <ClInclude Include="src\utils\Simplex.h" />

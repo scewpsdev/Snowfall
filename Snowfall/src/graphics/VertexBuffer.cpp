@@ -44,11 +44,11 @@ extern SDL_GPUDevice* device;
 extern GraphicsState* graphics;
 
 
-VertexBuffer* CreateVertexBuffer(int numVertices, const VertexBufferLayout* layout, const uint8_t* data, uint32_t size, SDL_GPUCommandBuffer* cmdBuffer)
+VertexBuffer* CreateVertexBuffer(int numVertices, const VertexBufferLayout* layout, SDL_GPUBufferUsageFlags usageFlags, const uint8_t* data, uint32_t size, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	SDL_GPUBufferCreateInfo bufferInfo = {};
 	bufferInfo.size = size;
-	bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+	bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX | usageFlags;
 	SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device, &bufferInfo);
 
 	if (data)

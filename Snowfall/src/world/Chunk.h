@@ -8,6 +8,8 @@
 
 #define CHUNK_SIZE 32
 #define CHUNK_VERTEX_BUFFER_SIZE (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 2 /** 6 * 3 / 2 / 4*/)
+#define CHUNK_TEXTURE_WIDTH 16
+#define MAX_LOADED_CHUNKS 2 //(CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH)
 
 
 enum BlockType : uint8_t
@@ -61,6 +63,9 @@ struct Chunk
 
 	inline BlockData* getBlockData(int x, int y, int z) { return (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) ? &blocks[x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE] : nullptr; }
 	inline BlockData* getBlockData(ivec3 position) { return getBlockData(position.x, position.y, position.z); }
+
+	inline int getVertexBufferOffset() const { return id * CHUNK_VERTEX_BUFFER_SIZE; }
+	inline ivec3 getChunkTextureOffset() const { return ivec3(id % CHUNK_TEXTURE_WIDTH, id / CHUNK_TEXTURE_WIDTH % CHUNK_TEXTURE_WIDTH, id / CHUNK_TEXTURE_WIDTH / CHUNK_TEXTURE_WIDTH) * CHUNK_SIZE; }
 };
 
 

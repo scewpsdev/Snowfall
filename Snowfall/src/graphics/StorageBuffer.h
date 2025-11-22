@@ -14,4 +14,4 @@ struct StorageBuffer
 StorageBuffer* CreateStorageBuffer(const uint8_t* data, uint32_t size, SDL_GPUCommandBuffer* cmdBuffer);
 void DestroyStorageBuffer(StorageBuffer* storageBuffer);
 
-void UpdateStorageBuffer(StorageBuffer* storageBuffer, const uint8_t* data, uint32_t size, SDL_GPUCommandBuffer* cmdBuffer);
+void UpdateStorageBuffer(StorageBuffer* storageBuffer, uint32_t offset, const uint8_t* data, uint32_t size, SDL_GPUCommandBuffer* cmdBuffer);

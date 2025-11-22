@@ -61,7 +61,7 @@ void DestroyStorageBuffer(StorageBuffer* storageBuffer)
 	SDL_ReleaseGPUBuffer(device, storageBuffer->buffer);
 }
 
-void UpdateStorageBuffer(StorageBuffer* storageBuffer, const uint8_t* data, uint32_t size, SDL_GPUCommandBuffer* cmdBuffer)
+void UpdateStorageBuffer(StorageBuffer* storageBuffer, uint32_t offset, const uint8_t* data, uint32_t size, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	SDL_memcpy(storageBuffer->mappedBuffer, data, size);
 
@@ -74,7 +74,7 @@ void UpdateStorageBuffer(StorageBuffer* storageBuffer, const uint8_t* data, uint
 	SDL_GPUBufferRegion region = {};
 	region.buffer = storageBuffer->buffer;
 	region.size = size;
-	region.offset = 0;
+	region.offset = offset;
 
 	SDL_UploadToGPUBuffer(copyPass, &location, &region, false);
 	SDL_EndGPUCopyPass(copyPass);
