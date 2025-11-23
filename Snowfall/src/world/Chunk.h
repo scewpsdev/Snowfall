@@ -9,7 +9,7 @@
 #define CHUNK_SIZE 32
 #define CHUNK_VERTEX_BUFFER_SIZE (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 2 /** 6 * 3 / 2 / 4*/)
 #define CHUNK_TEXTURE_WIDTH 16
-#define MAX_LOADED_CHUNKS 1000 //(CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH)
+#define MAX_LOADED_CHUNKS (CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH)
 
 
 enum BlockType : uint8_t
@@ -34,7 +34,7 @@ struct ChunkData
 
 struct Chunk
 {
-	BlockData blocks[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
+	BlockData* blocks;
 	bool isEmpty;
 
 	int id;

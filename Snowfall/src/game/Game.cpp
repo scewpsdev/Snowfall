@@ -142,7 +142,7 @@ static int ChunkGeneratorMain(void* ptr)
 	ChunkGeneratorThreadData* data = (ChunkGeneratorThreadData*)ptr;
 
 	//InitWorldGenerator(&data->generator);
-	InitChunkMesher(&data->mesher); // we divide by 2 since in the worst case scenario only every 2nd block is solid
+	//InitChunkMesher(&data->mesher); // we divide by 2 since in the worst case scenario only every 2nd block is solid
 	data->mutex = SDL_CreateMutex();
 
 	SDL_GPUTextureCreateInfo heightmapInfo = {};
@@ -173,15 +173,15 @@ static int ChunkGeneratorMain(void* ptr)
 	while (data->running)
 	{
 		SDL_LockMutex(data->mutex);
-		bool runTask = data->hasData && !data->hasFinished && data->hasStarted;
+		bool runTask = data->hasData && !data->hasFinished;
 		SDL_UnlockMutex(data->mutex);
 
 		if (runTask)
 		{
-			if (data->generate)
-				GenerateChunk(&data->game->worldGenerator, data, &data->chunk);
-			if (data->remesh)
-				ChunkMesherRun(&data->mesher, &data->chunk, data->game);
+			//if (data->generate)
+			GenerateChunk(&data->game->worldGenerator, data, &data->chunk);
+			//if (data->remesh)
+			//	ChunkMesherRun(&data->mesher, &data->chunk, data->game);
 
 			data->chunk.hasMesh = true;
 			data->chunk.needsMeshUpdate = false;
@@ -419,39 +419,26 @@ static void QueueChunkGenerator(int generatorID, Chunk* chunk, bool generate, bo
 	data->remesh = remesh;
 
 	data->hasData = true;
-	data->hasStarted = false;
 	data->hasFinished = false;
 
 	SDL_UnlockMutex(data->mutex);
 }
 
-static void UpdateChunkGenerators()
+static void AcquireChunkGeneratorResults()
 {
-	uint64_t before = SDL_GetTicksNS();
-
+	int numThreadsFinished = 0;
+	int numThreadsRunning = 0;
 	for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
 	{
 		ChunkGeneratorThreadData* data = &game->chunkGeneratorsData[i];
 
-		SDL_LockMutex(data->mutex);
-		bool canStart = data->hasData && !data->hasFinished;
-
-		if (canStart)
+		if (data->hasData)
 		{
-			data->hasStarted = true;
+			numThreadsRunning++;
 		}
-
-		SDL_UnlockMutex(data->mutex);
-	}
-
-	for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
-	{
-		ChunkGeneratorThreadData* data = &game->chunkGeneratorsData[i];
 
 		if (data->hasData && data->hasFinished)
 		{
-			SDL_assert(data->hasStarted);
-
 			SDL_LockMutex(data->mutex);
 			int gridIdx = GetChunkGridIdxFromPosition(data->chunk.position, data->chunk.lod);
 			SDL_assert(gridIdx != -1);
@@ -465,18 +452,17 @@ static void UpdateChunkGenerators()
 			}
 
 			data->hasData = false;
-			data->hasStarted = false;
 			data->hasFinished = false;
 
 			SDL_UnlockMutex(data->mutex);
+
+			numThreadsFinished++;
 		}
 	}
-
-	uint64_t after = SDL_GetTicksNS();
-	//SDL_Log("chunk thread %.2f ms", (after - before) / 1e6f);
+	//SDL_Log("%d threads finished, from %d", numThreadsFinished, numThreadsRunning);
 }
 
-static void UpdateChunkVisibility()
+static void UpdateChunkVisiblity()
 {
 	uint64_t before = SDL_GetTicksNS();
 	//if (game->numLoadedChunks < MAX_LOADED_CHUNKS)
@@ -528,7 +514,7 @@ static void UpdateChunkVisibility()
 										int generatorID;
 										if (ChunkGeneratorAvailable(&generatorID))
 										{
-											QueueChunkGenerator(generatorID, chunk, false, true, game);
+											//QueueChunkGenerator(generatorID, chunk, false, true, game);
 										}
 									}
 								}
@@ -585,8 +571,8 @@ void GameUpdate()
 	}
 	*/
 
-	UpdateChunkVisibility();
-	UpdateChunkGenerators();
+	AcquireChunkGeneratorResults();
+	UpdateChunkVisiblity();
 
 	vec3 delta = vec3::Zero;
 	if (app->keys[SDL_SCANCODE_A]) delta += game->cameraRotation.left();

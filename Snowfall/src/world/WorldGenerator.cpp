@@ -394,7 +394,7 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	*/
 
 	uint64_t after = SDL_GetTicksNS();
-	SDL_Log("worldgen %.2f ms", (after - before) / 1e6f);
+	//SDL_Log("worldgen %.2f ms", (after - before) / 1e6f);
 
 	chunk->needsMeshUpdate = true;
 }

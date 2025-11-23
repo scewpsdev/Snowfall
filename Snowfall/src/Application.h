@@ -110,11 +110,10 @@ struct ChunkGeneratorThreadData
 	SDL_Mutex* mutex;
 
 	bool hasData;
-	bool hasStarted;
 	bool hasFinished;
 
 	GameState* game;
-	ChunkMesher mesher;
+	//ChunkMesher mesher;
 
 	SDL_GPUTexture* heightmap;
 	SDL_GPUBuffer* faceMaskBuffer;
@@ -145,7 +144,7 @@ struct GameState
 #define NUM_CHUNK_LOD_LEVELS 1
 	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
-#define NUM_CHUNK_GENERATOR_THREADS 1
+#define NUM_CHUNK_GENERATOR_THREADS 8
 	SDL_Thread* chunkGenerators[NUM_CHUNK_GENERATOR_THREADS];
 	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
 
