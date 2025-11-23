@@ -199,39 +199,72 @@ static void GenerateMeshDetectFaces(WorldGenerator* generator, Chunk* chunk, SDL
 	SDL_EndGPUComputePass(computePass);
 }
 
-static void GenerateMeshGenVertices(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuffer* faceMaskBuffer, SDL_GPUBuffer* outputBuffer, SDL_GPUBuffer* counterBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+static void GenerateMeshGenVertices(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuffer* faceMaskBuffer, SDL_GPUBuffer* outputBuffer, SDL_GPUBuffer* claimedBuffer, SDL_GPUBuffer* indirectBuffer, TransferBuffer* indirectTransferBuffer, SDL_GPUCommandBuffer* cmdBuffer)
 {
-	// clear claimed buffer and counter
+	// clear claimed buffer
 	{
 		SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
-		bufferBinding.buffer = counterBuffer;
+		bufferBinding.buffer = claimedBuffer;
 		bufferBinding.cycle = false;
 		SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
 		SDL_BindGPUComputePipeline(computePass, generator->clearBufferShader->compute);
 
-		SDL_DispatchGPUCompute(computePass, (1 + CHUNK_SIZE * CHUNK_SIZE * 6 + 255) / 256, 1, 1);
+		SDL_DispatchGPUCompute(computePass, (CHUNK_SIZE * CHUNK_SIZE * 6 + 255) / 256, 1, 1);
 
 		SDL_EndGPUComputePass(computePass);
 	}
+	// clear indirect buffer
+	{
+		SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
 
-	SDL_GPUStorageBufferReadWriteBinding bufferBindings[2];
+		void* mappedBuffer = SDL_MapGPUTransferBuffer(device, indirectTransferBuffer->buffer, indirectTransferBuffer->cycle);
+
+		SDL_GPUIndirectDrawCommand defaultDrawCmd = {};
+		defaultDrawCmd.num_vertices = 3;
+		defaultDrawCmd.num_instances = 0;
+		defaultDrawCmd.first_vertex = 0;
+		defaultDrawCmd.first_instance = chunk->getVertexBufferOffset();
+		SDL_memcpy(mappedBuffer, &defaultDrawCmd, sizeof(defaultDrawCmd));
+
+		SDL_UnmapGPUTransferBuffer(device, indirectTransferBuffer->buffer);
+
+		SDL_GPUTransferBufferLocation location = {};
+		location.transfer_buffer = indirectTransferBuffer->buffer;
+		location.offset = 0;
+
+		SDL_GPUBufferRegion region = {};
+		region.buffer = indirectBuffer;
+		region.offset = chunk->getIndirectBufferOffset();
+		region.size = sizeof(SDL_GPUIndirectDrawCommand);
+
+		SDL_UploadToGPUBuffer(copyPass, &location, &region, false);
+
+		SDL_EndGPUCopyPass(copyPass);
+	}
+
+	SDL_GPUStorageBufferReadWriteBinding bufferBindings[3];
 	bufferBindings[0] = {};
 	bufferBindings[0].buffer = outputBuffer;
 	bufferBindings[0].cycle = false;
 	bufferBindings[1] = {};
-	bufferBindings[1].buffer = counterBuffer;
+	bufferBindings[1].buffer = claimedBuffer;
 	bufferBindings[1].cycle = false;
-	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, bufferBindings, 2);
+	bufferBindings[2] = {};
+	bufferBindings[2].buffer = indirectBuffer;
+	bufferBindings[2].cycle = false;
+	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, bufferBindings, 3);
 	SDL_BindGPUComputePipeline(computePass, generator->vertexGenShader->compute);
 
 	SDL_BindGPUComputeStorageBuffers(computePass, 0, &faceMaskBuffer, 1);
 
 	struct UniformData
 	{
+		int id;
 		int vertexBufferOffset;
-		ivec3 padding;
+		ivec2 padding;
 	};
 	UniformData params = {};
+	params.id = chunk->id;
 	params.vertexBufferOffset = chunk->getVertexBufferOffset();
 	SDL_PushGPUComputeUniformData(cmdBuffer, 0, &params, sizeof(params));
 
@@ -251,10 +284,12 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	GenerateHeightmap(generator, chunk, threadData->heightmap, cmdBuffer);
 	GenerateDensity(generator, chunk, threadData->heightmap, threadData->game->chunkTexture, cmdBuffer);
 	GenerateMeshDetectFaces(generator, chunk, threadData->game->chunkTexture, threadData->faceMaskBuffer, cmdBuffer);
-	GenerateMeshGenVertices(generator, chunk, threadData->faceMaskBuffer, threadData->game->chunkVertexBuffer->buffer, threadData->faceCounterBuffer, cmdBuffer);
+	GenerateMeshGenVertices(generator, chunk, threadData->faceMaskBuffer, threadData->game->chunkVertexBuffer->buffer, threadData->claimedFaceBuffer, threadData->game->chunkIndirectBuffer->buffer, threadData->chunkIndirectTransferBuffer, cmdBuffer);
 
 	ChunkData chunkData = {};
-	UpdateStorageBuffer(threadData->game->chunkStorageBuffer, (uint8_t*)&chunkData, sizeof(chunkData), cmdBuffer);
+	chunkData.position = chunk->position;
+	chunkData.scale = chunk->chunkScale;
+	UpdateStorageBuffer(threadData->game->chunkStorageBuffer, chunk->getStorageBufferOffset(), (uint8_t*)&chunkData, sizeof(chunkData), threadData->chunkStorageTransferBuffer->buffer, threadData->chunkStorageTransferBuffer->cycle, cmdBuffer);
 
 	SDL_SubmitGPUCommandBuffer(cmdBuffer);
 

@@ -9,13 +9,13 @@ extern SDL_GPUDevice* device;
 extern GraphicsState* graphics;
 
 
-IndirectBuffer* CreateIndirectBuffer(int maxDrawCommands, bool indexed)
+IndirectBuffer* CreateIndirectBuffer(int maxDrawCommands, bool indexed, SDL_GPUBufferUsageFlags usage)
 {
 	uint32_t drawCommandSize = indexed ? sizeof(SDL_GPUIndexedIndirectDrawCommand) : sizeof(SDL_GPUIndirectDrawCommand);
 
 	SDL_GPUBufferCreateInfo bufferInfo = {};
 	bufferInfo.size = maxDrawCommands * drawCommandSize;
-	bufferInfo.usage = SDL_GPU_BUFFERUSAGE_INDIRECT;
+	bufferInfo.usage = SDL_GPU_BUFFERUSAGE_INDIRECT | usage;
 	SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device, &bufferInfo);
 
 	SDL_GPUTransferBufferCreateInfo transferInfo = {};

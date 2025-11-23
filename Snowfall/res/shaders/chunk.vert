@@ -13,6 +13,7 @@ layout(set = 0, binding = 0) readonly buffer ChunkData {
 
 layout(std140, set = 1, binding = 0) uniform UniformBlock {
     mat4 pv;
+	//int chunkID;
 };
 
 

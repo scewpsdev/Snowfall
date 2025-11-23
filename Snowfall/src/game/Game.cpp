@@ -5,12 +5,6 @@
 #include "math/Vector.h"
 
 
-struct ChunkUniforms
-{
-	Matrix pv;
-};
-
-
 static Chunk* GetAvailableChunk()
 {
 	for (int i = 0; i < MAX_LOADED_CHUNKS; i++)
@@ -151,12 +145,6 @@ static int ChunkGeneratorMain(void* ptr)
 	InitChunkMesher(&data->mesher); // we divide by 2 since in the worst case scenario only every 2nd block is solid
 	data->mutex = SDL_CreateMutex();
 
-	SDL_GPUTransferBufferCreateInfo transferBufferInfo = {};
-	transferBufferInfo.size = CHUNK_VERTEX_BUFFER_SIZE;
-	transferBufferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	data->transferBuffer = SDL_CreateGPUTransferBuffer(device, &transferBufferInfo);
-	data->mappedTransferBuffer = SDL_MapGPUTransferBuffer(device, data->transferBuffer, false);
-
 	SDL_GPUTextureCreateInfo heightmapInfo = {};
 	heightmapInfo.type = SDL_GPU_TEXTURETYPE_2D;
 	heightmapInfo.format = SDL_GPU_TEXTUREFORMAT_R32_FLOAT;
@@ -176,7 +164,10 @@ static int ChunkGeneratorMain(void* ptr)
 	SDL_GPUBufferCreateInfo counterBufferInfo = {};
 	counterBufferInfo.size = sizeof(uint32_t) + CHUNK_SIZE * CHUNK_SIZE * 6 * sizeof(uint32_t);
 	counterBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
-	data->faceCounterBuffer = SDL_CreateGPUBuffer(device, &counterBufferInfo);
+	data->claimedFaceBuffer = SDL_CreateGPUBuffer(device, &counterBufferInfo);
+
+	data->chunkStorageTransferBuffer = CreateTransferBuffer(sizeof(ChunkData), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, true);
+	data->chunkIndirectTransferBuffer = CreateTransferBuffer(sizeof(SDL_GPUIndirectDrawCommand), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, true);
 
 	data->running = true;
 	while (data->running)
@@ -204,11 +195,6 @@ static int ChunkGeneratorMain(void* ptr)
 			SDL_DelayPrecise(1000);
 		}
 	}
-
-	SDL_UnmapGPUTransferBuffer(device, data->transferBuffer);
-	data->mappedTransferBuffer = nullptr;
-
-	SDL_ReleaseGPUTransferBuffer(device, data->transferBuffer);
 
 	return 0;
 }
@@ -279,6 +265,9 @@ void GameInit()
 
 	game->chunkVertexBuffer = CreateVertexBuffer(MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE, &chunkBufferLayouts[0], SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE, nullptr, MAX_LOADED_CHUNKS * CHUNK_VERTEX_BUFFER_SIZE * sizeof(uint32_t), cmdBuffer);
 
+	game->chunkStorageBuffer = CreateStorageBuffer(nullptr, MAX_LOADED_CHUNKS * 6 * sizeof(ChunkData), cmdBuffer);
+	game->chunkIndirectBuffer = CreateIndirectBuffer(MAX_LOADED_CHUNKS * 6, false, SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE);
+
 	SDL_GPUTextureCreateInfo chunkTextureInfo = {};
 	chunkTextureInfo.type = SDL_GPU_TEXTURETYPE_3D;
 	chunkTextureInfo.format = SDL_GPU_TEXTUREFORMAT_R8_UINT;
@@ -290,8 +279,6 @@ void GameInit()
 	chunkTextureInfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
 	game->chunkTexture = SDL_CreateGPUTexture(device, &chunkTextureInfo);
 
-	game->chunkStorageBuffer = CreateStorageBuffer(nullptr, MAX_LOADED_CHUNKS * 6 * sizeof(ChunkData), cmdBuffer);
-	game->chunkDrawBuffer = CreateIndirectBuffer(MAX_LOADED_CHUNKS * 6, false);
 	game->chunkPalette = LoadTexture("res/textures/palette.png.bin", cmdBuffer);
 
 	game->lightingShader = LoadGraphicsShader("res/shaders/lighting.vert.bin", "res/shaders/lighting.frag.bin");
@@ -764,8 +751,8 @@ static int UpdateDrawBuffers(vec4 frustumPlanes[6])
 
 	if (numDrawCommands > 0)
 	{
-		UpdateIndirectBuffer(game->chunkDrawBuffer, drawCommands, numDrawCommands, cmdBuffer);
-		UpdateStorageBuffer(game->chunkStorageBuffer, (const uint8_t*)chunkStorageData, numDrawCommands * sizeof(ChunkData), cmdBuffer);
+		//UpdateIndirectBuffer(game->chunkIndirectBuffer, drawCommands, numDrawCommands, cmdBuffer);
+		//UpdateStorageBuffer(game->chunkStorageBuffer, (const uint8_t*)chunkStorageData, numDrawCommands * sizeof(ChunkData), cmdBuffer);
 	}
 
 	return numDrawCommands;
@@ -794,7 +781,12 @@ void GameRender()
 
 		SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
 
-		ChunkUniforms uniforms = {};
+		struct UniformData
+		{
+			Matrix pv;
+			//int chunkID;
+		};
+		UniformData uniforms = {};
 		uniforms.pv = pv;
 		SDL_PushGPUVertexUniformData(cmdBuffer, 0, &uniforms, sizeof(uniforms));
 
@@ -809,16 +801,17 @@ void GameRender()
 
 		//SDL_DrawGPUPrimitivesIndirect(renderPass, game->chunkDrawBuffer->buffer, 0, numDrawCommands);
 
-		for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
+		//for (int i = 0; i < game->numLoadedChunks; i++)
 		{
-			SDL_GPUBufferBinding vertexBinding;
+			SDL_GPUBufferBinding vertexBinding = {};
 			vertexBinding.buffer = game->chunkVertexBuffer->buffer;
-			vertexBinding.offset = game->chunkGeneratorsData[i].chunk.getVertexBufferOffset() * sizeof(uint32_t);
+			vertexBinding.offset = 0; //game->chunks[i].getVertexBufferOffset() * sizeof(uint32_t);
 
 			SDL_BindGPUVertexBuffers(renderPass, 0, &vertexBinding, 1);
 
-			ChunkUniforms uniforms = {};
+			UniformData uniforms = {};
 			uniforms.pv = pv;
+			//uniforms.chunkID = game->chunks[i].id;
 			SDL_PushGPUVertexUniformData(cmdBuffer, 0, &uniforms, sizeof(uniforms));
 
 			SDL_GPUBuffer* storageBuffer = game->chunkStorageBuffer->buffer;
@@ -830,7 +823,8 @@ void GameRender()
 			bindings[0].sampler = game->defaultSampler;
 			SDL_BindGPUFragmentSamplers(renderPass, 0, bindings, 1);
 
-			SDL_DrawGPUPrimitives(renderPass, 3, 1079, 0, 0);
+			//SDL_DrawGPUPrimitives(renderPass, 3, 1200, 0, 0);
+			SDL_DrawGPUPrimitivesIndirect(renderPass, game->chunkIndirectBuffer->buffer, 0, game->lastLoadedChunk + 1);
 		}
 
 		SDL_EndGPURenderPass(renderPass);

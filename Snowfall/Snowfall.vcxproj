@@ -156,6 +156,7 @@
     <ClCompile Include="src\graphics\Shader.cpp" />
     <ClCompile Include="src\graphics\StorageBuffer.cpp" />
     <ClCompile Include="src\graphics\Texture.cpp" />
+    <ClCompile Include="src\graphics\TransferBuffer.cpp" />
     <ClCompile Include="src\graphics\VertexBuffer.cpp" />
     <ClCompile Include="src\io\BinaryReader.cpp" />
     <ClCompile Include="src\io\Image.cpp" />
@@ -182,6 +183,7 @@
     <ClInclude Include="src\graphics\IndirectBuffer.h" />
     <ClInclude Include="src\graphics\InstanceBuffer.h" />
     <ClInclude Include="src\graphics\StorageBuffer.h" />
+    <ClInclude Include="src\graphics\TransferBuffer.h" />
     <ClInclude Include="src\renderer\Renderer2D.h" />
     <ClInclude Include="src\renderer\ScreenQuad.h" />
     <ClInclude Include="src\Resource.h" />

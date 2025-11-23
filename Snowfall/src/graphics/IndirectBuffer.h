@@ -13,6 +13,6 @@ struct IndirectBuffer
 };
 
 
-IndirectBuffer* CreateIndirectBuffer(int maxDrawCommands, bool indexed);
+IndirectBuffer* CreateIndirectBuffer(int maxDrawCommands, bool indexed, SDL_GPUBufferUsageFlags usage);
 void UpdateIndirectBuffer(IndirectBuffer* buffer, const SDL_GPUIndirectDrawCommand* drawCommands, int numDrawCommands, SDL_GPUCommandBuffer* cmdBuffer);
 void DestroyIndirectBuffer(IndirectBuffer* indirectBuffer);

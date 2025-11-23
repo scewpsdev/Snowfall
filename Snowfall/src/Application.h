@@ -14,6 +14,7 @@
 #include "graphics/InstanceBuffer.h"
 #include "graphics/IndirectBuffer.h"
 #include "graphics/StorageBuffer.h"
+#include "graphics/TransferBuffer.h"
 #include "graphics/Shader.h"
 #include "graphics/Texture.h"
 #include "graphics/RenderTarget.h"
@@ -73,6 +74,10 @@ struct GraphicsState
 	StorageBuffer storageBuffers[MAX_STORAGE_BUFFERS];
 	int numStorageBuffers;
 
+#define MAX_TRANSFER_BUFFERS 64
+	TransferBuffer transferBuffers[MAX_TRANSFER_BUFFERS];
+	int numTransferBuffers;
+
 #define MAX_SHADERS 256
 	Shader shaders[MAX_SHADERS];
 	int numShaders;
@@ -111,12 +116,12 @@ struct ChunkGeneratorThreadData
 	GameState* game;
 	ChunkMesher mesher;
 
-	SDL_GPUTransferBuffer* transferBuffer;
-	void* mappedTransferBuffer;
-
 	SDL_GPUTexture* heightmap;
 	SDL_GPUBuffer* faceMaskBuffer;
-	SDL_GPUBuffer* faceCounterBuffer;
+	SDL_GPUBuffer* claimedFaceBuffer;
+
+	TransferBuffer* chunkStorageTransferBuffer;
+	TransferBuffer* chunkIndirectTransferBuffer;
 
 	Chunk chunk;
 	bool generate;
@@ -145,11 +150,12 @@ struct GameState
 	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
 
 	WorldGenerator worldGenerator;
-	VertexBuffer* chunkVertexBuffer;
-	SDL_GPUTexture* chunkTexture;
 
+	VertexBuffer* chunkVertexBuffer;
 	StorageBuffer* chunkStorageBuffer;
-	IndirectBuffer* chunkDrawBuffer;
+	TransferBuffer* chunkStorageTransferBuffer;
+	IndirectBuffer* chunkIndirectBuffer;
+	SDL_GPUTexture* chunkTexture;
 	Texture* chunkPalette;
 
 	SDL_GPUTexture* depthTexture;

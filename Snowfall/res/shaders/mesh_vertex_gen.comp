@@ -14,15 +14,27 @@ layout(std430, set = 1, binding = 0) buffer FaceData {
 	uint faceData[];
 };
 
-layout(std430, set = 1, binding = 1) buffer Counter {
-	coherent uint faceCounter;
+layout(std430, set = 1, binding = 1) buffer ClaimedData {
 	uint claimed[];
+};
+
+struct DrawCommand
+{
+	uint vertex_count;
+	uint instance_count;
+	uint first_vertex;
+	uint first_instance;
+};
+
+layout(std430, set = 1, binding = 2) buffer DrawCmd {
+	coherent DrawCommand commands[];
 };
 
 layout(std140, set = 2, binding = 0) uniform Params {
 	ivec4 data0;
 
-#define vertexBufferOffset data0.x
+#define chunkID data0.x
+#define vertexBufferOffset data0.y
 };
 
 
@@ -127,7 +139,7 @@ void main()
 
 			uint block = getBlock(coord);
 
-			uint idx = atomicAdd(faceCounter, 1);
+			uint idx = atomicAdd(commands[chunkID].instance_count, 1);
 			uint face = encodeFaceData(coord.x, coord.y, coord.z, w, h, faceIdx, block);
 			faceData[vertexBufferOffset + idx] = face;
 		}
