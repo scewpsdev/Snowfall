@@ -7,8 +7,6 @@
 
 #include "Resource.h"
 
-#include "utils/BumpAllocator.h"
-
 #include "graphics/VertexBuffer.h"
 #include "graphics/IndexBuffer.h"
 #include "graphics/InstanceBuffer.h"
@@ -30,6 +28,9 @@
 #include "world/WorldGenerator.h"
 #include "world/Chunk.h"
 #include "world/ChunkMesher.h"
+
+#include "utils/BumpAllocator.h"
+#include "utils/Queue.h"
 
 
 #define PROJECT_PATH "D:\\Dev\\Snowfall\\Snowfall"
@@ -104,13 +105,17 @@ struct ChunkLODLevel
 	uint8_t chunkFlags[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
 };
 
+struct ChunkGenerationJob
+{
+	Chunk* chunk;
+	bool generate;
+	bool remesh;
+};
+
 struct ChunkGeneratorThreadData
 {
 	bool running;
 	SDL_Mutex* mutex;
-
-	bool hasData;
-	bool hasFinished;
 
 	GameState* game;
 	//ChunkMesher mesher;
@@ -121,10 +126,6 @@ struct ChunkGeneratorThreadData
 
 	TransferBuffer* chunkStorageTransferBuffer;
 	TransferBuffer* chunkIndirectTransferBuffer;
-
-	Chunk chunk;
-	bool generate;
-	bool remesh;
 };
 
 struct GameState
@@ -147,6 +148,8 @@ struct GameState
 #define NUM_CHUNK_GENERATOR_THREADS 8
 	SDL_Thread* chunkGenerators[NUM_CHUNK_GENERATOR_THREADS];
 	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
+	Queue<ChunkGenerationJob, 16> chunkJobQueue;
+	SDL_Mutex* chunkJobMutex;
 
 	WorldGenerator worldGenerator;
 

@@ -137,6 +137,14 @@ static void UnloadChunk(Chunk* chunk)
 	chunk->lod = -1;
 }
 
+// TODO
+// [X] completely async chunk generation queue
+// [ ] cull chunk sides
+// [ ] unload empty chunks
+// [ ] gpu culling pass (compact indirect buffer, frustum culling, sort front to back, remove invisible faces)
+// [ ] read block type from texture in chunk fragment shader
+// [ ] add back block types
+
 static int ChunkGeneratorMain(void* ptr)
 {
 	ChunkGeneratorThreadData* data = (ChunkGeneratorThreadData*)ptr;
@@ -172,6 +180,28 @@ static int ChunkGeneratorMain(void* ptr)
 	data->running = true;
 	while (data->running)
 	{
+		SDL_LockMutex(game->chunkJobMutex);
+		if (game->chunkJobQueue.size > 0)
+		{
+			ChunkGenerationJob job;
+			QueuePop(&game->chunkJobQueue, &job);
+
+			SDL_UnlockMutex(game->chunkJobMutex);
+
+			GenerateChunk(&data->game->worldGenerator, data, job.chunk);
+			job.chunk->isLoaded = true;
+			job.chunk->hasMesh = true;
+			job.chunk->needsMeshUpdate = false;
+		}
+		else
+		{
+			SDL_UnlockMutex(game->chunkJobMutex);
+			//SDL_DelayPrecise(1000);
+		}
+
+		SDL_Delay(1);
+
+		/*
 		SDL_LockMutex(data->mutex);
 		bool runTask = data->hasData && !data->hasFinished;
 		SDL_UnlockMutex(data->mutex);
@@ -190,10 +220,7 @@ static int ChunkGeneratorMain(void* ptr)
 			data->hasFinished = true;
 			SDL_UnlockMutex(data->mutex);
 		}
-		else
-		{
-			SDL_DelayPrecise(1000);
-		}
+		*/
 	}
 
 	return 0;
@@ -319,6 +346,9 @@ void GameInit()
 
 	InitWorldGenerator(&game->worldGenerator);
 
+	InitQueue(&game->chunkJobQueue);
+	game->chunkJobMutex = SDL_CreateMutex();
+
 	for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
 	{
 		game->chunkGeneratorsData[i].game = game;
@@ -376,54 +406,33 @@ void GameResize(int newWidth, int newHeight)
 
 static bool HasChunkGeneratorForPosition(ivec3 position)
 {
-	for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
+	for (int i = 0; i < game->chunkJobQueue.size; i++)
 	{
-		ChunkGeneratorThreadData* data = &game->chunkGeneratorsData[i];
-		if (data->hasData && data->chunk.position == position)
+		int idx = (game->chunkJobQueue.head + i) % game->chunkJobQueue.capacity;
+		if (game->chunkJobQueue.data[idx].chunk->position == position)
 			return true;
 	}
 	return false;
 }
 
-static bool ChunkGeneratorAvailable(int* id)
+static bool ChunkGeneratorAvailable()
 {
-	for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
-	{
-		ChunkGeneratorThreadData* data = &game->chunkGeneratorsData[i];
-
-		//SDL_LockMutex(data->mutex);
-		bool isAvailable = !data->hasData;
-
-		if (isAvailable)
-		{
-			*id = i;
-			//SDL_UnlockMutex(data->mutex);
-			return true;
-		}
-
-		//SDL_UnlockMutex(data->mutex);
-	}
-	return false;
+	return game->chunkJobQueue.size < game->chunkJobQueue.capacity;
 }
 
-static void QueueChunkGenerator(int generatorID, Chunk* chunk, bool generate, bool remesh, GameState* game)
+static void QueueChunkGenerator(Chunk* chunk, bool generate, bool remesh)
 {
-	ChunkGeneratorThreadData* data = &game->chunkGeneratorsData[generatorID];
+	ChunkGenerationJob job = {};
+	job.chunk = chunk;
+	job.generate = generate;
+	job.remesh = remesh;
 
-	SDL_LockMutex(data->mutex);
-	bool isAvailable = !data->hasData;
-	SDL_assert(isAvailable);
-
-	data->chunk = *chunk;
-	data->generate = generate;
-	data->remesh = remesh;
-
-	data->hasData = true;
-	data->hasFinished = false;
-
-	SDL_UnlockMutex(data->mutex);
+	SDL_LockMutex(game->chunkJobMutex);
+	QueuePush(&game->chunkJobQueue, job);
+	SDL_UnlockMutex(game->chunkJobMutex);
 }
 
+/*
 static void AcquireChunkGeneratorResults()
 {
 	int numThreadsFinished = 0;
@@ -461,6 +470,7 @@ static void AcquireChunkGeneratorResults()
 	}
 	//SDL_Log("%d threads finished, from %d", numThreadsFinished, numThreadsRunning);
 }
+*/
 
 static void UpdateChunkVisiblity()
 {
@@ -510,22 +520,23 @@ static void UpdateChunkVisiblity()
 									*/
 									else if (chunk->needsMeshUpdate)
 									{
+										/*
 										// only remesh
 										int generatorID;
 										if (ChunkGeneratorAvailable(&generatorID))
 										{
 											//QueueChunkGenerator(generatorID, chunk, false, true, game);
 										}
+										*/
 									}
 								}
 								else if (!flags && !chunk && game->numLoadedChunks < MAX_LOADED_CHUNKS)
 								{
-									int generatorID;
-									if (!HasChunkGeneratorForPosition(position) && ChunkGeneratorAvailable(&generatorID))
+									if (!HasChunkGeneratorForPosition(position) && ChunkGeneratorAvailable())
 									{
 										if (chunk = InitChunk(position, lod))
 										{
-											QueueChunkGenerator(generatorID, chunk, true, true, game);
+											QueueChunkGenerator(chunk, true, true);
 
 											Chunk* left = GetChunkAtWorldPosWithLOD(position - ivec3(chunkSize, 0, 0), lod, game);
 											Chunk* right = GetChunkAtWorldPosWithLOD(position + ivec3(chunkSize, 0, 0), lod, game);
@@ -571,7 +582,7 @@ void GameUpdate()
 	}
 	*/
 
-	AcquireChunkGeneratorResults();
+	//AcquireChunkGeneratorResults();
 	UpdateChunkVisiblity();
 
 	vec3 delta = vec3::Zero;
