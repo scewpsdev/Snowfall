@@ -38,7 +38,7 @@ struct Chunk
 	bool isEmpty;
 
 	int id;
-	ivec3 position;
+	ivec3 gridPosition;
 	int lod;
 	int chunkScale;
 
@@ -49,6 +49,8 @@ struct Chunk
 
 	int vertexOffsets[6];
 	int vertexCounts[6];
+
+	inline ivec3 getWorldPosition() const { return gridPosition * CHUNK_SIZE * chunkScale; }
 
 	inline int getTotalVertexCount() const
 	{

@@ -148,7 +148,7 @@ struct GameState
 #define NUM_CHUNK_GENERATOR_THREADS 8
 	SDL_Thread* chunkGenerators[NUM_CHUNK_GENERATOR_THREADS];
 	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
-	Queue<ChunkGenerationJob, 16> chunkJobQueue;
+	Queue<ChunkGenerationJob, 8> chunkJobQueue;
 	SDL_Mutex* chunkJobMutex;
 
 	WorldGenerator worldGenerator;

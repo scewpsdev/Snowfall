@@ -752,19 +752,19 @@ void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
 	const Chunk* neighbors[6];
 	uint32_t neighborFlags[6];
 
-	neighbors[0] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Left * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighbors[1] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Right * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighbors[2] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Down * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighbors[3] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Up * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighbors[4] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Forward * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighbors[5] = GetChunkAtWorldPosWithLOD(chunk->position + ivec3::Back * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighbors[0] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Left, chunk->lod);
+	neighbors[1] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Right, chunk->lod);
+	neighbors[2] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Down, chunk->lod);
+	neighbors[3] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Up, chunk->lod);
+	neighbors[4] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Forward, chunk->lod);
+	neighbors[5] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Back, chunk->lod);
 
-	neighborFlags[0] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Left * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighborFlags[1] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Right * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighborFlags[2] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Down * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighborFlags[3] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Up * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighborFlags[4] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Forward * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
-	neighborFlags[5] = GetChunkFlagsAtWorldPos(chunk->position + ivec3::Back * CHUNK_SIZE * chunk->chunkScale, chunk->lod, game);
+	neighborFlags[0] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Left, chunk->lod);
+	neighborFlags[1] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Right, chunk->lod);
+	neighborFlags[2] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Down, chunk->lod);
+	neighborFlags[3] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Up, chunk->lod);
+	neighborFlags[4] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Forward, chunk->lod);
+	neighborFlags[5] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Back, chunk->lod);
 
 	GreedyMesh(mesher, chunk, neighbors, neighborFlags, game);
 

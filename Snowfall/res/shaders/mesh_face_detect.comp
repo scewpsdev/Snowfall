@@ -14,8 +14,20 @@ layout(std430, set = 1, binding = 0) writeonly buffer MaskData {
 
 layout(std140, set = 2, binding = 0) uniform Params {
 	ivec4 data0;
+	ivec4 data1;
+	ivec4 data2;
+	ivec4 data3;
+	ivec4 data4;
+	ivec4 data5;
+	ivec4 data6;
 
 #define chunkTextureOffset data0.xyz
+#define neighbor0TextureOffset data1.xyz
+#define neighbor1TextureOffset data2.xyz
+#define neighbor2TextureOffset data3.xyz
+#define neighbor3TextureOffset data4.xyz
+#define neighbor4TextureOffset data5.xyz
+#define neighbor5TextureOffset data6.xyz
 };
 
 
@@ -41,12 +53,33 @@ void main()
 
 	uint faceMask = 0;
 
-	if (gid.x == 0 || texelFetch(voxelData, sampleCoord + ivec3(-1, 0, 0), 0).r == 0) faceMask |= FACE_X_NEG;
-	if (gid.x == CHUNK_SIZE - 1 || texelFetch(voxelData, sampleCoord + ivec3(1, 0, 0), 0).r == 0) faceMask |= FACE_X_POS;
-	if (gid.y == 0 || texelFetch(voxelData, sampleCoord + ivec3(0, -1, 0), 0).r == 0) faceMask |= FACE_Y_NEG;
-	if (gid.y == CHUNK_SIZE - 1 || texelFetch(voxelData, sampleCoord + ivec3(0, 1, 0), 0).r == 0) faceMask |= FACE_Y_POS;
-	if (gid.z == 0 || texelFetch(voxelData, sampleCoord + ivec3(0, 0, -1), 0).r == 0) faceMask |= FACE_Z_NEG;
-	if (gid.z == CHUNK_SIZE - 1 || texelFetch(voxelData, sampleCoord + ivec3(0, 0, 1), 0).r == 0) faceMask |= FACE_Z_POS;
+	ivec3 leftCoord = gid.x == 0 ? neighbor0TextureOffset + ivec3(CHUNK_SIZE - 1, gid.yz) : sampleCoord + ivec3(-1, 0, 0);
+	ivec3 rightCoord = gid.x == CHUNK_SIZE - 1 ? neighbor1TextureOffset + ivec3(0, gid.yz) : sampleCoord + ivec3(1, 0, 0);
+	ivec3 downCoord = gid.y == 0 ? neighbor2TextureOffset + ivec3(gid.x, CHUNK_SIZE - 1, gid.z) : sampleCoord + ivec3(0, -1, 0);
+	ivec3 upCoord = gid.y == CHUNK_SIZE - 1 ? neighbor3TextureOffset + ivec3(gid.x, 0, gid.z) : sampleCoord + ivec3(0, 1, 0);
+	ivec3 forwardCoord = gid.z == 0 ? neighbor4TextureOffset + ivec3(gid.xy, CHUNK_SIZE - 1) : sampleCoord + ivec3(0, 0, -1);
+	ivec3 backCoord = gid.z == CHUNK_SIZE - 1 ? neighbor5TextureOffset + ivec3(gid.xy, 0) : sampleCoord + ivec3(0, 0, 1);
+
+	uint left = texelFetch(voxelData, leftCoord, 0).r;
+	uint right = texelFetch(voxelData, rightCoord, 0).r;
+	uint down = texelFetch(voxelData, downCoord, 0).r;
+	uint up = texelFetch(voxelData, upCoord, 0).r;
+	uint forward = texelFetch(voxelData, forwardCoord, 0).r;
+	uint back = texelFetch(voxelData, backCoord, 0).r;
+
+	if (gid.x == 0 && neighbor0TextureOffset == ivec3(-1)) left = 0;
+	if (gid.x == CHUNK_SIZE - 1 && neighbor1TextureOffset == ivec3(-1)) right = 0;
+	if (gid.y == 0 && neighbor2TextureOffset == ivec3(-1)) down = 0;
+	if (gid.y == CHUNK_SIZE - 1 && neighbor3TextureOffset == ivec3(-1)) up = 0;
+	if (gid.z == 0 && neighbor4TextureOffset == ivec3(-1)) forward = 0;
+	if (gid.z == CHUNK_SIZE - 1 && neighbor5TextureOffset == ivec3(-1)) back = 0;
+
+	if (left == 0) faceMask |= FACE_X_NEG;
+	if (right == 0) faceMask |= FACE_X_POS;
+	if (down == 0) faceMask |= FACE_Y_NEG;
+	if (up == 0) faceMask |= FACE_Y_POS;
+	if (forward == 0) faceMask |= FACE_Z_NEG;
+	if (back == 0) faceMask |= FACE_Z_POS;
 
 	uint packed = (block & 0xFF) | faceMask << 8;
 	faceMasks[idx] = packed;
