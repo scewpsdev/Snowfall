@@ -34,8 +34,7 @@ struct ChunkData
 
 struct Chunk
 {
-	BlockData* blocks;
-	bool isEmpty;
+	BlockData* blocks; // unused until chunk data readback is implemented
 
 	int id;
 	ivec3 gridPosition;
@@ -47,18 +46,7 @@ struct Chunk
 	bool hasMesh; // whether the mesh has been generated. is still true even if no vertices were created
 	bool needsMeshUpdate;
 
-	int vertexOffsets[6];
-	int vertexCounts[6];
-
 	inline ivec3 getWorldPosition() const { return gridPosition * CHUNK_SIZE * chunkScale; }
-
-	inline int getTotalVertexCount() const
-	{
-		return vertexCounts[0] + vertexCounts[1] + vertexCounts[2] + vertexCounts[3] + vertexCounts[4] + vertexCounts[5];
-	}
-
-	//int vertexBufferOffset;
-	//int numVertices;
 
 	inline const BlockData* getBlockData(int x, int y, int z) const { return (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE) ? &blocks[x + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE] : nullptr; }
 	inline const BlockData* getBlockData(ivec3 position) const { return getBlockData(position.x, position.y, position.z); }

@@ -71,7 +71,7 @@ uint8_t GetChunkFlagsAtGridPosition(ivec3 position, int lod)
 		uint8_t flags = game->lods[lod].chunkFlags[gridIdx];
 		return flags;
 	}
-	return 0;
+	return CHUNK_FLAG_SOLID;
 }
 
 /*
@@ -144,8 +144,8 @@ static void UnloadChunk(Chunk* chunk)
 // TODO
 // [X] completely async chunk generation queue
 // [X] fix chunk generation framerate drops
-// [ ] separate generation and meshing
-// [ ] cull chunk sides
+// [X] separate generation and meshing
+// [X] cull chunk sides
 // [ ] unload empty chunks
 // [ ] gpu culling pass (compact indirect buffer, frustum culling, sort front to back, remove invisible faces)
 // [ ] read block type from texture in chunk fragment shader
@@ -183,25 +183,89 @@ static int ChunkGeneratorMain(void* ptr)
 	data->chunkStorageTransferBuffer = CreateTransferBuffer(sizeof(ChunkData), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, true);
 	data->chunkIndirectTransferBuffer = CreateTransferBuffer(sizeof(SDL_GPUIndirectDrawCommand), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, true);
 
+	data->chunkReadbackTransferBuffer = CreateTransferBuffer(sizeof(SDL_GPUIndirectDrawCommand), SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, false);
+
 	data->running = true;
 	while (data->running)
 	{
 		SDL_LockMutex(game->chunkJobMutex);
+		SDL_LockMutex(game->chunkMeshingMutex);
 		if (game->chunkJobQueue.size > 0)
 		{
-			ChunkGenerationJob job;
+			SDL_UnlockMutex(game->chunkMeshingMutex);
+
+			ChunkJob job;
 			QueuePop(&game->chunkJobQueue, &job);
 
 			SDL_UnlockMutex(game->chunkJobMutex);
 
-			GenerateChunk(&data->game->worldGenerator, data, job.chunk);
+			SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
+
+			Chunk* neighbors[6];
+			neighbors[0] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Left, job.chunk->lod);
+			neighbors[1] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Right, job.chunk->lod);
+			neighbors[2] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Down, job.chunk->lod);
+			neighbors[3] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Up, job.chunk->lod);
+			neighbors[4] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Forward, job.chunk->lod);
+			neighbors[5] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Back, job.chunk->lod);
+
+			uint32_t neighborFlags[6];
+			neighborFlags[0] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Left, job.chunk->lod);
+			neighborFlags[1] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Right, job.chunk->lod);
+			neighborFlags[2] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Down, job.chunk->lod);
+			neighborFlags[3] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Up, job.chunk->lod);
+			neighborFlags[4] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Forward, job.chunk->lod);
+			neighborFlags[5] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Back, job.chunk->lod);
+
+			GenerateChunk(&data->game->worldGenerator, data, job.chunk, cmdBuffer);
+			ChunkMesherRun(&data->game->chunkMesher, data, job.chunk, neighbors, neighborFlags, cmdBuffer);
+
+			SDL_SubmitGPUCommandBuffer(cmdBuffer);
+
 			job.chunk->isLoaded = true;
 			job.chunk->hasMesh = true;
-			job.chunk->needsMeshUpdate = false;
+
+			for (int i = 0; i < 6; i++)
+			{
+				if (neighbors[i] && neighbors[i]->hasMesh)
+					neighbors[i]->needsMeshUpdate = true;
+			}
+		}
+		else if (game->chunkMeshingQueue.size > 0)
+		{
+			SDL_UnlockMutex(game->chunkJobMutex);
+
+			ChunkJob job;
+			QueuePop(&game->chunkMeshingQueue, &job);
+
+			SDL_UnlockMutex(game->chunkMeshingMutex);
+
+			SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
+
+			Chunk* neighbors[6];
+			neighbors[0] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Left, job.chunk->lod);
+			neighbors[1] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Right, job.chunk->lod);
+			neighbors[2] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Down, job.chunk->lod);
+			neighbors[3] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Up, job.chunk->lod);
+			neighbors[4] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Forward, job.chunk->lod);
+			neighbors[5] = GetChunkAtGridPosition(job.chunk->gridPosition + ivec3::Back, job.chunk->lod);
+
+			uint32_t neighborFlags[6];
+			neighborFlags[0] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Left, job.chunk->lod);
+			neighborFlags[1] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Right, job.chunk->lod);
+			neighborFlags[2] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Down, job.chunk->lod);
+			neighborFlags[3] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Up, job.chunk->lod);
+			neighborFlags[4] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Forward, job.chunk->lod);
+			neighborFlags[5] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Back, job.chunk->lod);
+
+			ChunkMesherRun(&data->game->chunkMesher, data, job.chunk, neighbors, neighborFlags, cmdBuffer);
+
+			SDL_SubmitGPUCommandBuffer(cmdBuffer);
 		}
 		else
 		{
 			SDL_UnlockMutex(game->chunkJobMutex);
+			SDL_UnlockMutex(game->chunkMeshingMutex);
 			//SDL_DelayPrecise(1000);
 		}
 
@@ -351,9 +415,12 @@ void GameInit()
 	//InitChunkAllocator(&game->chunkAllocator);
 
 	InitWorldGenerator(&game->worldGenerator);
+	InitChunkMesher(&game->chunkMesher);
 
 	InitQueue(&game->chunkJobQueue);
+	InitQueue(&game->chunkMeshingQueue);
 	game->chunkJobMutex = SDL_CreateMutex();
+	game->chunkMeshingMutex = SDL_CreateMutex();
 
 	for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
 	{
@@ -426,16 +493,40 @@ static bool ChunkGeneratorAvailable()
 	return game->chunkJobQueue.size < game->chunkJobQueue.capacity;
 }
 
-static void QueueChunkGenerator(Chunk* chunk, bool generate, bool remesh)
+static void QueueChunkGenerator(Chunk* chunk)
 {
-	ChunkGenerationJob job = {};
+	ChunkJob job = {};
 	job.chunk = chunk;
-	job.generate = generate;
-	job.remesh = remesh;
 
 	SDL_LockMutex(game->chunkJobMutex);
 	QueuePush(&game->chunkJobQueue, job);
 	SDL_UnlockMutex(game->chunkJobMutex);
+}
+
+static bool HasChunkMesherForChunk(Chunk* chunk)
+{
+	for (int i = 0; i < game->chunkMeshingQueue.size; i++)
+	{
+		int idx = (game->chunkMeshingQueue.head + i) % game->chunkMeshingQueue.capacity;
+		if (game->chunkMeshingQueue.data[idx].chunk == chunk)
+			return true;
+	}
+	return false;
+}
+
+static bool ChunkMesherAvailable()
+{
+	return game->chunkMeshingQueue.size < game->chunkMeshingQueue.capacity;
+}
+
+static void QueueChunkMesher(Chunk* chunk)
+{
+	ChunkJob job = {};
+	job.chunk = chunk;
+
+	SDL_LockMutex(game->chunkMeshingMutex);
+	QueuePush(&game->chunkMeshingQueue, job);
+	SDL_UnlockMutex(game->chunkMeshingMutex);
 }
 
 /*
@@ -487,6 +578,7 @@ static void UpdateChunkVisiblity()
 		Chunk* chunk = &game->chunks[i];
 		if (chunk->isActive && chunk->isLoaded)
 		{
+			/*
 			if (chunk->isEmpty)
 			{
 				int lod = chunk->lod;
@@ -495,7 +587,6 @@ static void UpdateChunkVisiblity()
 				UnloadChunk(chunk);
 				game->lods[lod].chunkFlags[gridIdx] |= CHUNK_FLAG_EMPTY;
 			}
-			/*
 			else if (chunk->hasMesh && !chunk->needsMeshUpdate && chunk->getTotalVertexCount() == 0 || chunk->isEmpty)
 			{
 				int lod = chunk->lod;
@@ -503,11 +594,17 @@ static void UpdateChunkVisiblity()
 				UnloadChunk(chunk);
 				game->lods[lod].chunkFlags[gridIdx] |= CHUNK_FLAG_SOLID;
 			}
+			else
 			*/
-			else if (chunk->needsMeshUpdate)
+			if (chunk->needsMeshUpdate)
 			{
-				/*
 				// only remesh
+				if (!HasChunkMesherForChunk(chunk) && ChunkMesherAvailable())
+				{
+					QueueChunkMesher(chunk);
+				}
+
+				/*
 				int generatorID;
 				if (ChunkGeneratorAvailable(&generatorID))
 				{
@@ -545,21 +642,7 @@ static void UpdateChunkVisiblity()
 						{
 							if (chunk = InitChunk(gridPosition, lod))
 							{
-								QueueChunkGenerator(chunk, true, true);
-
-								Chunk* neighbors[6];
-								neighbors[0] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Left, chunk->lod);
-								neighbors[1] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Right, chunk->lod);
-								neighbors[2] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Down, chunk->lod);
-								neighbors[3] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Up, chunk->lod);
-								neighbors[4] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Forward, chunk->lod);
-								neighbors[5] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Back, chunk->lod);
-
-								for (int i = 0; i < 6; i++)
-								{
-									if (neighbors[i] && (neighbors[i]->hasMesh || neighbors[i]->isEmpty))
-										neighbors[i]->needsMeshUpdate = true;
-								}
+								QueueChunkGenerator(chunk);
 							}
 						}
 					}
@@ -611,6 +694,15 @@ void GameUpdate()
 		{
 			if (game->chunks[i].isLoaded)
 				UnloadChunk(&game->chunks[i]);
+		}
+	}
+	if (app->keys[SDL_SCANCODE_F7] && !app->lastKeys[SDL_SCANCODE_F7])
+	{
+		// regenerate chunks
+		for (int i = 0; i < MAX_LOADED_CHUNKS; i++)
+		{
+			if (game->chunks[i].isLoaded)
+				game->chunks[i].needsMeshUpdate = true;
 		}
 	}
 
@@ -691,6 +783,7 @@ static int UpdateDrawBuffers(vec4 frustumPlanes[6])
 	{
 		Chunk* chunk = chunkDrawList[i];
 
+		/*
 		int vertexCount = 0;
 		for (int i = 0; i < 6; i++)
 			vertexCount += chunk->vertexCounts[i];
@@ -698,7 +791,7 @@ static int UpdateDrawBuffers(vec4 frustumPlanes[6])
 		if (chunk->isEmpty || vertexCount == 0)
 			continue;
 
-		///*
+
 		SDL_GPUIndirectDrawCommand* drawCommand = &drawCommands[numDrawCommands];
 		drawCommand->num_vertices = vertexCount;
 		drawCommand->num_instances = 1;
@@ -712,9 +805,8 @@ static int UpdateDrawBuffers(vec4 frustumPlanes[6])
 		numDrawCommands++;
 
 		game->numRenderedVertices += vertexCount;
-		//*/
 
-		/*
+
 		int chunkScale = CHUNK_SIZE * ipow(2, chunk->lod);
 		ivec3 cameraChunk = (ivec3)floor(game->cameraPosition / chunkScale);
 		ivec3 dir = chunk->position / chunkScale - cameraChunk;

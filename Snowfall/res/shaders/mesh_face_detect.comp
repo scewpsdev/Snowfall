@@ -67,12 +67,12 @@ void main()
 	uint forward = texelFetch(voxelData, forwardCoord, 0).r;
 	uint back = texelFetch(voxelData, backCoord, 0).r;
 
-	if (gid.x == 0 && neighbor0TextureOffset == ivec3(-1)) left = 0;
-	if (gid.x == CHUNK_SIZE - 1 && neighbor1TextureOffset == ivec3(-1)) right = 0;
-	if (gid.y == 0 && neighbor2TextureOffset == ivec3(-1)) down = 0;
-	if (gid.y == CHUNK_SIZE - 1 && neighbor3TextureOffset == ivec3(-1)) up = 0;
-	if (gid.z == 0 && neighbor4TextureOffset == ivec3(-1)) forward = 0;
-	if (gid.z == CHUNK_SIZE - 1 && neighbor5TextureOffset == ivec3(-1)) back = 0;
+	if (gid.x == 0 && neighbor0TextureOffset.x < 0) left = neighbor0TextureOffset.x == -1 ? 0 : 1;
+	if (gid.x == CHUNK_SIZE - 1 && neighbor1TextureOffset.x < 0) right = neighbor1TextureOffset.x == -1 ? 0 : 1;
+	if (gid.y == 0 && neighbor2TextureOffset.x < 0) down = neighbor2TextureOffset.x == -1 ? 0 : 1;
+	if (gid.y == CHUNK_SIZE - 1 && neighbor3TextureOffset.x < 0) up = neighbor3TextureOffset.x == -1 ? 0 : 1;
+	if (gid.z == 0 && neighbor4TextureOffset.x < 0) forward = neighbor4TextureOffset.x == -1 ? 0 : 1;
+	if (gid.z == CHUNK_SIZE - 1 && neighbor5TextureOffset.x < 0) back = neighbor5TextureOffset.x == -1 ? 0 : 1;
 
 	if (left == 0) faceMask |= FACE_X_NEG;
 	if (right == 0) faceMask |= FACE_X_POS;

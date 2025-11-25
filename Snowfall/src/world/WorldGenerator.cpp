@@ -16,10 +16,6 @@ void InitWorldGenerator(WorldGenerator* generator)
 	generator->heightmapShader = LoadComputeShader("res/shaders/heightmap.comp.bin");
 	generator->noiseShader = LoadComputeShader("res/shaders/worldgen.comp.bin");
 
-	generator->faceDetectShader = LoadComputeShader("res/shaders/mesh_face_detect.comp.bin");
-	generator->vertexGenShader = LoadComputeShader("res/shaders/mesh_vertex_gen.comp.bin");
-	generator->clearBufferShader = LoadComputeShader("res/shaders/clear_buffer.comp.bin");
-
 	SDL_GPUSamplerCreateInfo samplerInfo = {};
 	generator->sampler = SDL_CreateGPUSampler(device, &samplerInfo);
 }
@@ -174,153 +170,19 @@ static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUText
 	SDL_EndGPUComputePass(computePass);
 }
 
-static void GenerateMeshDetectFaces(WorldGenerator* generator, Chunk* chunk, Chunk* neighbors[6], SDL_GPUTexture* voxelData, SDL_GPUBuffer* outputBuffer, SDL_GPUCommandBuffer* cmdBuffer)
-{
-	SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
-	bufferBinding.buffer = outputBuffer;
-	bufferBinding.cycle = false;
-	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
-	SDL_BindGPUComputePipeline(computePass, generator->faceDetectShader->compute);
-
-	SDL_GPUTextureSamplerBinding samplerBinding = {};
-	samplerBinding.texture = voxelData;
-	samplerBinding.sampler = generator->sampler;
-	SDL_BindGPUComputeSamplers(computePass, 0, &samplerBinding, 1);
-
-	struct UniformData
-	{
-		ivec3 chunkTextureOffset;
-		int padding0;
-		ivec3 neighbor0TextureOffset;
-		int padding1;
-		ivec3 neighbor1TextureOffset;
-		int padding2;
-		ivec3 neighbor2TextureOffset;
-		int padding3;
-		ivec3 neighbor3TextureOffset;
-		int padding4;
-		ivec3 neighbor4TextureOffset;
-		int padding5;
-		ivec3 neighbor5TextureOffset;
-		int padding6;
-	};
-	UniformData params = {};
-	params.chunkTextureOffset = chunk->getChunkTextureOffset();
-	params.neighbor0TextureOffset = neighbors[0] ? neighbors[0]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor1TextureOffset = neighbors[1] ? neighbors[1]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor2TextureOffset = neighbors[2] ? neighbors[2]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor3TextureOffset = neighbors[3] ? neighbors[3]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor4TextureOffset = neighbors[4] ? neighbors[4]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor5TextureOffset = neighbors[5] ? neighbors[5]->getChunkTextureOffset() : ivec3(-1);
-	SDL_PushGPUComputeUniformData(cmdBuffer, 0, &params, sizeof(params));
-
-	SDL_DispatchGPUCompute(computePass, CHUNK_SIZE / 8, CHUNK_SIZE / 8, CHUNK_SIZE / 8);
-
-	SDL_EndGPUComputePass(computePass);
-}
-
-static void GenerateMeshGenVertices(WorldGenerator* generator, Chunk* chunk, SDL_GPUBuffer* faceMaskBuffer, SDL_GPUBuffer* outputBuffer, SDL_GPUBuffer* claimedBuffer, SDL_GPUBuffer* indirectBuffer, TransferBuffer* indirectTransferBuffer, SDL_GPUCommandBuffer* cmdBuffer)
-{
-	// clear claimed buffer
-	{
-		SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
-		bufferBinding.buffer = claimedBuffer;
-		bufferBinding.cycle = false;
-		SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
-		SDL_BindGPUComputePipeline(computePass, generator->clearBufferShader->compute);
-
-		SDL_DispatchGPUCompute(computePass, (CHUNK_SIZE * CHUNK_SIZE * 6 + 255) / 256, 1, 1);
-
-		SDL_EndGPUComputePass(computePass);
-	}
-	// clear indirect buffer
-	{
-		SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
-
-		void* mappedBuffer = SDL_MapGPUTransferBuffer(device, indirectTransferBuffer->buffer, indirectTransferBuffer->cycle);
-
-		SDL_GPUIndirectDrawCommand defaultDrawCmd = {};
-		defaultDrawCmd.num_vertices = 3;
-		defaultDrawCmd.num_instances = 0;
-		defaultDrawCmd.first_vertex = 0;
-		defaultDrawCmd.first_instance = chunk->getVertexBufferOffset();
-		SDL_memcpy(mappedBuffer, &defaultDrawCmd, sizeof(defaultDrawCmd));
-
-		SDL_UnmapGPUTransferBuffer(device, indirectTransferBuffer->buffer);
-
-		SDL_GPUTransferBufferLocation location = {};
-		location.transfer_buffer = indirectTransferBuffer->buffer;
-		location.offset = 0;
-
-		SDL_GPUBufferRegion region = {};
-		region.buffer = indirectBuffer;
-		region.offset = chunk->getIndirectBufferOffset();
-		region.size = sizeof(SDL_GPUIndirectDrawCommand);
-
-		SDL_UploadToGPUBuffer(copyPass, &location, &region, false);
-
-		SDL_EndGPUCopyPass(copyPass);
-	}
-
-	SDL_GPUStorageBufferReadWriteBinding bufferBindings[3];
-	bufferBindings[0] = {};
-	bufferBindings[0].buffer = outputBuffer;
-	bufferBindings[0].cycle = false;
-	bufferBindings[1] = {};
-	bufferBindings[1].buffer = claimedBuffer;
-	bufferBindings[1].cycle = false;
-	bufferBindings[2] = {};
-	bufferBindings[2].buffer = indirectBuffer;
-	bufferBindings[2].cycle = false;
-	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, bufferBindings, 3);
-	SDL_BindGPUComputePipeline(computePass, generator->vertexGenShader->compute);
-
-	SDL_BindGPUComputeStorageBuffers(computePass, 0, &faceMaskBuffer, 1);
-
-	struct UniformData
-	{
-		int id;
-		int vertexBufferOffset;
-		ivec2 padding;
-	};
-	UniformData params = {};
-	params.id = chunk->id;
-	params.vertexBufferOffset = chunk->getVertexBufferOffset();
-	SDL_PushGPUComputeUniformData(cmdBuffer, 0, &params, sizeof(params));
-
-	SDL_DispatchGPUCompute(computePass, 1, 1, 6);
-
-	SDL_EndGPUComputePass(computePass);
-}
-
-void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadData, Chunk* chunk)
+void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadData, Chunk* chunk, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	uint64_t before = SDL_GetTicksNS();
 
 	//chunk->isEmpty = true;
 
-	SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
-
-	Chunk* neighbors[6];
-
-	neighbors[0] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Left, chunk->lod);
-	neighbors[1] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Right, chunk->lod);
-	neighbors[2] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Down, chunk->lod);
-	neighbors[3] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Up, chunk->lod);
-	neighbors[4] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Forward, chunk->lod);
-	neighbors[5] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Back, chunk->lod);
-
 	GenerateHeightmap(generator, chunk, threadData->heightmap, cmdBuffer);
 	GenerateDensity(generator, chunk, threadData->heightmap, threadData->game->chunkTexture, cmdBuffer);
-	GenerateMeshDetectFaces(generator, chunk, neighbors, threadData->game->chunkTexture, threadData->faceMaskBuffer, cmdBuffer);
-	GenerateMeshGenVertices(generator, chunk, threadData->faceMaskBuffer, threadData->game->chunkVertexBuffer->buffer, threadData->claimedFaceBuffer, threadData->game->chunkIndirectBuffer->buffer, threadData->chunkIndirectTransferBuffer, cmdBuffer);
-
+	
 	ChunkData chunkData = {};
 	chunkData.position = chunk->getWorldPosition();
 	chunkData.scale = chunk->chunkScale;
 	UpdateStorageBuffer(threadData->game->chunkStorageBuffer, chunk->getStorageBufferOffset(), (uint8_t*)&chunkData, sizeof(chunkData), threadData->chunkStorageTransferBuffer->buffer, threadData->chunkStorageTransferBuffer->cycle, cmdBuffer);
-
-	SDL_SubmitGPUCommandBuffer(cmdBuffer);
 
 	/*
 	SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
@@ -423,7 +285,7 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	*/
 
 	uint64_t after = SDL_GetTicksNS();
-	//SDL_Log("worldgen %.2f ms", (after - before) / 1e6f);
+	//SDL_Log("worldgen %d,%d,%d %.2f ms", chunk->gridPosition.x, chunk->gridPosition.y, chunk->gridPosition.z, (after - before) / 1e6f);
 
 	chunk->needsMeshUpdate = true;
 }

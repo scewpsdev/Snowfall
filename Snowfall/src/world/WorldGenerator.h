@@ -18,15 +18,10 @@ struct WorldGenerator
 	Shader* heightmapShader;
 	Shader* noiseShader;
 
-	// greedy meshing
-	Shader* faceDetectShader;
-	Shader* vertexGenShader;
-	Shader* clearBufferShader;
-
 	SDL_GPUSampler* sampler;
 };
 
 
 void InitWorldGenerator(WorldGenerator* generator);
 
-void GenerateChunk(WorldGenerator* generator, struct ChunkGeneratorThreadData* threadData, Chunk* chunk);
+void GenerateChunk(WorldGenerator* generator, struct ChunkGeneratorThreadData* threadData, Chunk* chunk, SDL_GPUCommandBuffer* cmdBuffer);

@@ -43,7 +43,7 @@ const static ivec3 vertices[6 * 3] =
 
 
 extern GameMemory* memory;
-extern SDL_GPUCommandBuffer* cmdBuffer;
+extern SDL_GPUDevice* device;
 
 
 void InitChunkMesher(ChunkMesher* mesher)
@@ -51,6 +51,13 @@ void InitChunkMesher(ChunkMesher* mesher)
 	//mesher->vertexData = (uint32_t*)BumpAllocatorCalloc(&memory->transientAllocator, vertexCapacity, sizeof(uint32_t));
 	//mesher->numVertices = 0;
 	//mesher->vertexCapacity = vertexCapacity;
+
+	mesher->faceDetectShader = LoadComputeShader("res/shaders/mesh_face_detect.comp.bin");
+	mesher->vertexGenShader = LoadComputeShader("res/shaders/mesh_vertex_gen.comp.bin");
+	mesher->clearBufferShader = LoadComputeShader("res/shaders/clear_buffer.comp.bin");
+
+	SDL_GPUSamplerCreateInfo samplerInfo = {};
+	mesher->sampler = SDL_CreateGPUSampler(device, &samplerInfo);
 }
 
 static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirection, int colorID)
@@ -155,7 +162,7 @@ static uint32_t TrailingOnes(uint32_t value)
 	return TrailingZeros(~value);
 }
 
-static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* neighbors[6], uint32_t neighborFlags[6], GameState* game)
+static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* neighbors[6], uint32_t neighborFlags[6])
 {
 	uint64_t* binaryGrid = mesher->binaryGrid;
 
@@ -723,105 +730,162 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 	mesher->vertexCounts[5] = mesher->numVertices - mesher->vertexOffsets[5];
 }
 
-void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, GameState* game)
+static void GenerateMeshDetectFaces(ChunkMesher* mesher, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUTexture* voxelData, SDL_GPUBuffer* outputBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+{
+	SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
+	bufferBinding.buffer = outputBuffer;
+	bufferBinding.cycle = false;
+	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
+	SDL_BindGPUComputePipeline(computePass, mesher->faceDetectShader->compute);
+
+	SDL_GPUTextureSamplerBinding samplerBinding = {};
+	samplerBinding.texture = voxelData;
+	samplerBinding.sampler = mesher->sampler;
+	SDL_BindGPUComputeSamplers(computePass, 0, &samplerBinding, 1);
+
+	struct UniformData
+	{
+		ivec3 chunkTextureOffset;
+		int padding0;
+		ivec3 neighbor0TextureOffset;
+		int padding1;
+		ivec3 neighbor1TextureOffset;
+		int padding2;
+		ivec3 neighbor2TextureOffset;
+		int padding3;
+		ivec3 neighbor3TextureOffset;
+		int padding4;
+		ivec3 neighbor4TextureOffset;
+		int padding5;
+		ivec3 neighbor5TextureOffset;
+		int padding6;
+	};
+	UniformData params = {};
+	params.chunkTextureOffset = chunk->getChunkTextureOffset();
+	params.neighbor0TextureOffset = neighborFlags[0] ? (neighborFlags[0] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[0] ? neighbors[0]->getChunkTextureOffset() : ivec3(-1);
+	params.neighbor1TextureOffset = neighborFlags[1] ? (neighborFlags[1] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[1] ? neighbors[1]->getChunkTextureOffset() : ivec3(-1);
+	params.neighbor2TextureOffset = neighborFlags[2] ? (neighborFlags[2] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[2] ? neighbors[2]->getChunkTextureOffset() : ivec3(-1);
+	params.neighbor3TextureOffset = neighborFlags[3] ? (neighborFlags[3] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[3] ? neighbors[3]->getChunkTextureOffset() : ivec3(-1);
+	params.neighbor4TextureOffset = neighborFlags[4] ? (neighborFlags[4] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[4] ? neighbors[4]->getChunkTextureOffset() : ivec3(-1);
+	params.neighbor5TextureOffset = neighborFlags[5] ? (neighborFlags[5] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[5] ? neighbors[5]->getChunkTextureOffset() : ivec3(-1);
+	SDL_PushGPUComputeUniformData(cmdBuffer, 0, &params, sizeof(params));
+
+	SDL_DispatchGPUCompute(computePass, CHUNK_SIZE / 8, CHUNK_SIZE / 8, CHUNK_SIZE / 8);
+
+	SDL_EndGPUComputePass(computePass);
+}
+
+static void GenerateMeshGenVertices(ChunkMesher* mesher, Chunk* chunk, SDL_GPUBuffer* faceMaskBuffer, SDL_GPUBuffer* outputBuffer, SDL_GPUBuffer* claimedBuffer, SDL_GPUBuffer* indirectBuffer, TransferBuffer* indirectTransferBuffer, SDL_GPUTransferBuffer* readbackBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+{
+	// clear claimed buffer
+	{
+		SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
+		bufferBinding.buffer = claimedBuffer;
+		bufferBinding.cycle = false;
+		SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
+		SDL_BindGPUComputePipeline(computePass, mesher->clearBufferShader->compute);
+
+		SDL_DispatchGPUCompute(computePass, (CHUNK_SIZE * CHUNK_SIZE * 6 + 255) / 256, 1, 1);
+
+		SDL_EndGPUComputePass(computePass);
+	}
+	// clear indirect buffer
+	{
+		SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
+
+		void* mappedBuffer = SDL_MapGPUTransferBuffer(device, indirectTransferBuffer->buffer, indirectTransferBuffer->cycle);
+
+		SDL_GPUIndirectDrawCommand defaultDrawCmd = {};
+		defaultDrawCmd.num_vertices = 3;
+		defaultDrawCmd.num_instances = 0;
+		defaultDrawCmd.first_vertex = 0;
+		defaultDrawCmd.first_instance = chunk->getVertexBufferOffset();
+		SDL_memcpy(mappedBuffer, &defaultDrawCmd, sizeof(defaultDrawCmd));
+
+		SDL_UnmapGPUTransferBuffer(device, indirectTransferBuffer->buffer);
+
+		SDL_GPUTransferBufferLocation location = {};
+		location.transfer_buffer = indirectTransferBuffer->buffer;
+		location.offset = 0;
+
+		SDL_GPUBufferRegion region = {};
+		region.buffer = indirectBuffer;
+		region.offset = chunk->getIndirectBufferOffset();
+		region.size = sizeof(SDL_GPUIndirectDrawCommand);
+
+		SDL_UploadToGPUBuffer(copyPass, &location, &region, false);
+
+		SDL_EndGPUCopyPass(copyPass);
+	}
+
+	SDL_GPUStorageBufferReadWriteBinding bufferBindings[3];
+	bufferBindings[0] = {};
+	bufferBindings[0].buffer = outputBuffer;
+	bufferBindings[0].cycle = false;
+	bufferBindings[1] = {};
+	bufferBindings[1].buffer = claimedBuffer;
+	bufferBindings[1].cycle = false;
+	bufferBindings[2] = {};
+	bufferBindings[2].buffer = indirectBuffer;
+	bufferBindings[2].cycle = false;
+	SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, bufferBindings, 3);
+	SDL_BindGPUComputePipeline(computePass, mesher->vertexGenShader->compute);
+
+	SDL_BindGPUComputeStorageBuffers(computePass, 0, &faceMaskBuffer, 1);
+
+	struct UniformData
+	{
+		int id;
+		int vertexBufferOffset;
+		ivec2 padding;
+	};
+	UniformData params = {};
+	params.id = chunk->id;
+	params.vertexBufferOffset = chunk->getVertexBufferOffset();
+	SDL_PushGPUComputeUniformData(cmdBuffer, 0, &params, sizeof(params));
+
+	SDL_DispatchGPUCompute(computePass, 1, 1, 6);
+
+	SDL_EndGPUComputePass(computePass);
+
+	// read back vertex count
+
+	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
+
+	SDL_GPUBufferRegion src = {};
+	src.buffer = indirectBuffer;
+	src.offset = chunk->getIndirectBufferOffset();
+	src.size = sizeof(SDL_GPUIndirectDrawCommand);
+
+	SDL_GPUTransferBufferLocation dst = {};
+	dst.transfer_buffer = readbackBuffer;
+	dst.offset = 0;
+
+	SDL_DownloadFromGPUBuffer(copyPass, &src, &dst);
+
+	SDL_EndGPUCopyPass(copyPass);
+}
+
+void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	SDL_assert(chunk->isActive);
 
-	/*
-	if (chunk->vertexBuffer)
-	{
-		SDL_assert(chunk->indexBuffer);
-		DestroyVertexBuffer(chunk->vertexBuffer);
-		chunk->vertexBuffer = nullptr;
-		DestroyIndexBuffer(chunk->indexBuffer);
-		chunk->indexBuffer = nullptr;
-	}
-	*/
-
 	uint64_t before = SDL_GetTicksNS();
 
-	mesher->numVertices = 0;
-	InitHashMap(&mesher->greedyPlanes);
-	//mesher->greedyPlanes.clear();
-
-	//chunk->vertexOffset = 0;
-	//for (int i = 0; i < 6; i++)
-	//	BuildGreedyFaces(mesher, i, chunk, allocator, game);
-	//chunk->vertexCount = mesher->numVertices;
-
-	const Chunk* neighbors[6];
-	uint32_t neighborFlags[6];
-
-	neighbors[0] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Left, chunk->lod);
-	neighbors[1] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Right, chunk->lod);
-	neighbors[2] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Down, chunk->lod);
-	neighbors[3] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Up, chunk->lod);
-	neighbors[4] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Forward, chunk->lod);
-	neighbors[5] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Back, chunk->lod);
-
-	neighborFlags[0] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Left, chunk->lod);
-	neighborFlags[1] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Right, chunk->lod);
-	neighborFlags[2] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Down, chunk->lod);
-	neighborFlags[3] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Up, chunk->lod);
-	neighborFlags[4] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Forward, chunk->lod);
-	neighborFlags[5] = GetChunkFlagsAtGridPosition(chunk->gridPosition + ivec3::Back, chunk->lod);
-
-	GreedyMesh(mesher, chunk, neighbors, neighborFlags, game);
-
-	uint64_t after = SDL_GetTicksNS();
-	//SDL_Log("meshing %.2f ms", (after - before) / 1e6f);
+	chunk->needsMeshUpdate = false;
 
 	/*
-	for (int i = 0; i < CHUNK_SIZE; i++)
-	{
-		for (int j = 0; j < CHUNK_SIZE; j++)
-		{
-			for (int y = 0; y < CHUNK_SIZE; y++)
-			{
-				BlockData* block = chunk->getBlockData(j, y, i);
+	mesher->numVertices = 0;
+	InitHashMap(&mesher->greedyPlanes);
 
-				if (block->id > 0)
-				{
-					BlockData* left = chunk->getBlockData(j - 1, y, i);
-					BlockData* right = chunk->getBlockData(j + 1, y, i);
-					BlockData* down = chunk->getBlockData(j, y - 1, i);
-					BlockData* up = chunk->getBlockData(j, y + 1, i);
-					BlockData* forward = chunk->getBlockData(j, y, i - 1);
-					BlockData* back = chunk->getBlockData(j, y, i + 1);
-
-					if (!left) left = GetBlockAtWorldPos(chunk->position + ivec3(j - 1, y, i), game);
-					if (!right) right = GetBlockAtWorldPos(chunk->position + ivec3(j + 1, y, i), game);
-					if (!down) down = GetBlockAtWorldPos(chunk->position + ivec3(j, y - 1, i), game);
-					if (!up) up = GetBlockAtWorldPos(chunk->position + ivec3(j, y + 1, i), game);
-					if (!forward) forward = GetBlockAtWorldPos(chunk->position + ivec3(j, y, i - 1), game);
-					if (!back) back = GetBlockAtWorldPos(chunk->position + ivec3(j, y, i + 1), game);
-
-					ivec3 blockPosition(j, y, i);
-
-					//if (!left || !left->id) ChunkBuilderAddMesh(builder, 4, leftFace, 6, faceIndices, blockPosition, 0, block->colorID);
-					//if (!right || !right->id) ChunkBuilderAddMesh(builder, 4, rightFace, 6, faceIndices, blockPosition, 1, block->colorID);
-					//if (!down || !down->id) ChunkBuilderAddMesh(builder, 4, bottomFace, 6, faceIndices, blockPosition, 2, block->colorID);
-					//if (!up || !up->id) ChunkBuilderAddMesh(builder, 4, topFace, 6, faceIndices, blockPosition, 3, block->colorID);
-					//if (!forward || !forward->id) ChunkBuilderAddMesh(builder, 4, backFace, 6, faceIndices, blockPosition, 4, block->colorID);
-					//if (!back || !back->id) ChunkBuilderAddMesh(builder, 4, frontFace, 6, faceIndices, blockPosition, 5, block->colorID);
-
-					if (!left || !left->id) ChunkBuilderAddFace(builder, blockPosition, 1, 1, 0, block->id);
-					if (!right || !right->id) ChunkBuilderAddFace(builder, blockPosition, 1, 1, 1, block->id);
-					if (!down || !down->id) ChunkBuilderAddFace(builder, blockPosition, 1, 1, 2, block->id);
-					//if (!up || !up->id) ChunkBuilderAddFace(builder, blockPosition, 1, 1, 3, block->id);
-					//if (!forward || !forward->id) ChunkBuilderAddFace(builder, blockPosition, 1, 1, 4, block->id);
-					//if (!back || !back->id) ChunkBuilderAddFace(builder, blockPosition, 5, block->id);
-				}
-			}
-		}
-	}
+	GreedyMesh(mesher, chunk, neighbors, neighborFlags);
 	*/
 
-	//ChunkBuilderCreateBuffers(builder, &chunk->instanceBuffer);
-	//ChunkBuilderCreateBuffers(builder, &chunk->vertexBuffer, &chunk->indexBuffer);
+	GenerateMeshDetectFaces(mesher, chunk, neighbors, neighborFlags, threadData->game->chunkTexture, threadData->faceMaskBuffer, cmdBuffer);
+	GenerateMeshGenVertices(mesher, chunk, threadData->faceMaskBuffer, threadData->game->chunkVertexBuffer->buffer, threadData->claimedFaceBuffer, threadData->game->chunkIndirectBuffer->buffer, threadData->chunkIndirectTransferBuffer, threadData->chunkReadbackTransferBuffer, cmdBuffer);
 
-	//chunk->needsMeshUpdate = false;
-	//chunk->hasMesh = true;
+	uint64_t after = SDL_GetTicksNS();
+	//SDL_Log("meshing %d,%d,%d %.2f ms", chunk->gridPosition.x, chunk->gridPosition.y, chunk->gridPosition.z, (after - before) / 1e6f);
 }
 
 /*

@@ -25,8 +25,8 @@
 #include "math/Quaternion.h"
 #include "math/Matrix.h"
 
-#include "world/WorldGenerator.h"
 #include "world/Chunk.h"
+#include "world/WorldGenerator.h"
 #include "world/ChunkMesher.h"
 
 #include "utils/BumpAllocator.h"
@@ -105,11 +105,9 @@ struct ChunkLODLevel
 	uint8_t chunkFlags[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
 };
 
-struct ChunkGenerationJob
+struct ChunkJob
 {
 	Chunk* chunk;
-	bool generate;
-	bool remesh;
 };
 
 struct ChunkGeneratorThreadData
@@ -117,7 +115,7 @@ struct ChunkGeneratorThreadData
 	bool running;
 	SDL_Mutex* mutex;
 
-	GameState* game;
+	struct GameState* game;
 	//ChunkMesher mesher;
 
 	SDL_GPUTexture* heightmap;
@@ -126,6 +124,7 @@ struct ChunkGeneratorThreadData
 
 	TransferBuffer* chunkStorageTransferBuffer;
 	TransferBuffer* chunkIndirectTransferBuffer;
+	TransferBuffer* chunkReadbackTransferBuffer;
 };
 
 struct GameState
@@ -148,10 +147,13 @@ struct GameState
 #define NUM_CHUNK_GENERATOR_THREADS 8
 	SDL_Thread* chunkGenerators[NUM_CHUNK_GENERATOR_THREADS];
 	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
-	Queue<ChunkGenerationJob, 8> chunkJobQueue;
+	Queue<ChunkJob, 8> chunkJobQueue;
 	SDL_Mutex* chunkJobMutex;
+	Queue<ChunkJob, 8> chunkMeshingQueue;
+	SDL_Mutex* chunkMeshingMutex;
 
 	WorldGenerator worldGenerator;
+	ChunkMesher chunkMesher;
 
 	VertexBuffer* chunkVertexBuffer;
 	StorageBuffer* chunkStorageBuffer;

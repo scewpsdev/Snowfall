@@ -5,6 +5,7 @@
 //#include "graphics/InstanceBuffer.h"
 #include "graphics/VertexBuffer.h"
 #include "graphics/IndexBuffer.h"
+#include "graphics/Shader.h"
 
 #include "math/Vector.h"
 
@@ -40,6 +41,12 @@ struct ChunkMesher
 
 	int vertexOffsets[6];
 	int vertexCounts[6];
+
+	Shader* faceDetectShader;
+	Shader* vertexGenShader;
+	Shader* clearBufferShader;
+
+	SDL_GPUSampler* sampler;
 };
 
 
@@ -50,4 +57,4 @@ void InitChunkMesher(ChunkMesher* mesher);
 //void ChunkBuilderCreateBuffers(ChunkMesher* mesher, InstanceBuffer** instanceBuffer);
 //void ChunkBuilderCreateBuffers(ChunkMesher* mesher, VertexBuffer** vertexBuffer, IndexBuffer** indexBuffer);
 
-void ChunkMesherRun(ChunkMesher* mesher, const Chunk* chunk, struct GameState* game);
+void ChunkMesherRun(ChunkMesher* mesher, struct ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUCommandBuffer* cmdBuffer);
