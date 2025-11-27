@@ -9,7 +9,7 @@
 #define CHUNK_SIZE 32
 #define CHUNK_VERTEX_BUFFER_SIZE (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 2 /** 6 * 3 / 2 / 4*/)
 #define CHUNK_TEXTURE_WIDTH 16
-#define MAX_LOADED_CHUNKS (CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH)
+#define MAX_LOADED_CHUNKS 64 //(CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH * CHUNK_TEXTURE_WIDTH)
 
 
 enum BlockType : uint8_t
@@ -45,6 +45,11 @@ struct Chunk
 	bool isLoaded; // whether the block data has been loaded (can't be unloaded due to being empty before its been generated)
 	bool hasMesh; // whether the mesh has been generated. is still true even if no vertices were created
 	bool needsMeshUpdate;
+
+	struct ChunkReadbackData* readbackData;
+	int vertexCount;
+	int blockCount;
+
 
 	inline ivec3 getWorldPosition() const { return gridPosition * CHUNK_SIZE * chunkScale; }
 

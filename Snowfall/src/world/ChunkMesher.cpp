@@ -732,6 +732,19 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 
 static void GenerateMeshDetectFaces(ChunkMesher* mesher, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUTexture* voxelData, SDL_GPUBuffer* outputBuffer, SDL_GPUCommandBuffer* cmdBuffer)
 {
+	// clear face mask buffer and block counter
+	{
+		SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
+		bufferBinding.buffer = outputBuffer;
+		bufferBinding.cycle = false;
+		SDL_GPUComputePass* computePass = SDL_BeginGPUComputePass(cmdBuffer, nullptr, 0, &bufferBinding, 1);
+		SDL_BindGPUComputePipeline(computePass, mesher->clearBufferShader->compute);
+
+		SDL_DispatchGPUCompute(computePass, (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE + 1 + 255) / 256, 1, 1);
+
+		SDL_EndGPUComputePass(computePass);
+	}
+
 	SDL_GPUStorageBufferReadWriteBinding bufferBinding = {};
 	bufferBinding.buffer = outputBuffer;
 	bufferBinding.cycle = false;
@@ -863,16 +876,23 @@ static void GenerateMeshGenVertices(ChunkMesher* mesher, Chunk* chunk, SDL_GPUBu
 
 	SDL_DownloadFromGPUBuffer(copyPass, &src, &dst);
 
+	src.buffer = faceMaskBuffer;
+	src.offset = 0;
+	src.size = sizeof(uint32_t);
+
+	dst.transfer_buffer = readbackBuffer;
+	dst.offset = sizeof(SDL_GPUIndirectDrawCommand);
+
+	SDL_DownloadFromGPUBuffer(copyPass, &src, &dst);
+
 	SDL_EndGPUCopyPass(copyPass);
 }
 
-void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUCommandBuffer* cmdBuffer)
+void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUTransferBuffer* readbackBuffer, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	SDL_assert(chunk->isActive);
 
 	uint64_t before = SDL_GetTicksNS();
-
-	chunk->needsMeshUpdate = false;
 
 	/*
 	mesher->numVertices = 0;
@@ -882,7 +902,7 @@ void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, C
 	*/
 
 	GenerateMeshDetectFaces(mesher, chunk, neighbors, neighborFlags, threadData->game->chunkTexture, threadData->faceMaskBuffer, cmdBuffer);
-	GenerateMeshGenVertices(mesher, chunk, threadData->faceMaskBuffer, threadData->game->chunkVertexBuffer->buffer, threadData->claimedFaceBuffer, threadData->game->chunkIndirectBuffer->buffer, threadData->chunkIndirectTransferBuffer, threadData->chunkReadbackTransferBuffer, cmdBuffer);
+	GenerateMeshGenVertices(mesher, chunk, threadData->faceMaskBuffer, threadData->game->chunkVertexBuffer->buffer, threadData->claimedFaceBuffer, threadData->game->chunkIndirectBuffer->buffer, threadData->chunkIndirectTransferBuffer, readbackBuffer, cmdBuffer);
 
 	uint64_t after = SDL_GetTicksNS();
 	//SDL_Log("meshing %d,%d,%d %.2f ms", chunk->gridPosition.x, chunk->gridPosition.y, chunk->gridPosition.z, (after - before) / 1e6f);

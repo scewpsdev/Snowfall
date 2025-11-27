@@ -14,6 +14,7 @@ static Chunk* GetAvailableChunk()
 		{
 			chunk->id = i;
 			chunk->isActive = true;
+			chunk->vertexCount = -1;
 			game->numLoadedChunks++;
 
 			if (chunk->id > game->lastLoadedChunk)
@@ -132,13 +133,31 @@ static void UnloadChunk(Chunk* chunk)
 	SDL_assert(gridIdx != -1);
 	SDL_assert(game->lods[chunk->lod].chunkGrid[gridIdx] == chunk);
 	game->lods[chunk->lod].chunkGrid[gridIdx] = nullptr;
-	game->lods[chunk->lod].chunkFlags[gridIdx] = 0;
+	//game->lods[chunk->lod].chunkFlags[gridIdx] = 0;
 
 	game->numLoadedChunks--;
+
+	if (chunk->readbackData)
+	{
+		SDL_ReleaseGPUFence(device, chunk->readbackData->fence);
+		chunk->readbackData->fence = nullptr;
+
+		SDL_LockMutex(game->chunkReadbackMutex);
+		PoolRelease(&game->chunkReadbackPool, chunk->readbackData);
+		SDL_UnlockMutex(game->chunkReadbackMutex);
+		chunk->readbackData = nullptr;
+	}
+
+	chunk->isActive = false;
+	chunk->isLoaded = false;
+	chunk->hasMesh = false;
+	chunk->needsMeshUpdate = false;
 
 	*chunk = {};
 	chunk->id = -1;
 	chunk->lod = -1;
+	chunk->vertexCount = -1;
+	chunk->blockCount = -1;
 }
 
 // TODO
@@ -171,7 +190,7 @@ static int ChunkGeneratorMain(void* ptr)
 	data->heightmap = SDL_CreateGPUTexture(device, &heightmapInfo);
 
 	SDL_GPUBufferCreateInfo faceMaskBufferInfo = {};
-	faceMaskBufferInfo.size = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint32_t);
+	faceMaskBufferInfo.size = sizeof(uint32_t) + CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint32_t);
 	faceMaskBufferInfo.usage = SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE;
 	data->faceMaskBuffer = SDL_CreateGPUBuffer(device, &faceMaskBufferInfo);
 
@@ -183,21 +202,34 @@ static int ChunkGeneratorMain(void* ptr)
 	data->chunkStorageTransferBuffer = CreateTransferBuffer(sizeof(ChunkData), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, true);
 	data->chunkIndirectTransferBuffer = CreateTransferBuffer(sizeof(SDL_GPUIndirectDrawCommand), SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, true);
 
-	data->chunkReadbackTransferBuffer = CreateTransferBuffer(sizeof(SDL_GPUIndirectDrawCommand), SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, false);
-
 	data->running = true;
 	while (data->running)
 	{
 		SDL_LockMutex(game->chunkJobMutex);
 		SDL_LockMutex(game->chunkMeshingMutex);
-		if (game->chunkJobQueue.size > 0)
+		SDL_LockMutex(game->chunkReadbackMutex);
+		if (game->chunkJobQueue.size > 0 && game->chunkReadbackPool.freeHead != -1)
 		{
 			SDL_UnlockMutex(game->chunkMeshingMutex);
 
 			ChunkJob job;
 			QueuePop(&game->chunkJobQueue, &job);
 
+			SDL_assert(!job.chunk->readbackData);
+
+			if (!job.chunk->isActive)
+			{
+				SDL_UnlockMutex(game->chunkJobMutex);
+				SDL_UnlockMutex(game->chunkReadbackMutex);
+				continue;
+			}
+
+			ChunkReadbackData* readbackData = PoolAlloc(&game->chunkReadbackPool);
+
 			SDL_UnlockMutex(game->chunkJobMutex);
+			SDL_UnlockMutex(game->chunkReadbackMutex);
+
+			job.chunk->needsMeshUpdate = false;
 
 			SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
 
@@ -218,9 +250,10 @@ static int ChunkGeneratorMain(void* ptr)
 			neighborFlags[5] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Back, job.chunk->lod);
 
 			GenerateChunk(&data->game->worldGenerator, data, job.chunk, cmdBuffer);
-			ChunkMesherRun(&data->game->chunkMesher, data, job.chunk, neighbors, neighborFlags, cmdBuffer);
+			ChunkMesherRun(&data->game->chunkMesher, data, job.chunk, neighbors, neighborFlags, readbackData->transferBuffer, cmdBuffer);
 
-			SDL_SubmitGPUCommandBuffer(cmdBuffer);
+			readbackData->fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
+			job.chunk->readbackData = readbackData;
 
 			job.chunk->isLoaded = true;
 			job.chunk->hasMesh = true;
@@ -231,14 +264,28 @@ static int ChunkGeneratorMain(void* ptr)
 					neighbors[i]->needsMeshUpdate = true;
 			}
 		}
-		else if (game->chunkMeshingQueue.size > 0)
+		else if (game->chunkMeshingQueue.size > 0 && game->chunkReadbackPool.freeHead != -1)
 		{
 			SDL_UnlockMutex(game->chunkJobMutex);
 
 			ChunkJob job;
 			QueuePop(&game->chunkMeshingQueue, &job);
 
+			//SDL_assert(!job.chunk->readbackData);
+
+			if (!job.chunk->isActive || job.chunk->readbackData)
+			{
+				SDL_UnlockMutex(game->chunkMeshingMutex);
+				SDL_UnlockMutex(game->chunkReadbackMutex);
+				continue;
+			}
+
+			ChunkReadbackData* readbackData = PoolAlloc(&game->chunkReadbackPool);
+
 			SDL_UnlockMutex(game->chunkMeshingMutex);
+			SDL_UnlockMutex(game->chunkReadbackMutex);
+
+			job.chunk->needsMeshUpdate = false;
 
 			SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
 
@@ -258,14 +305,16 @@ static int ChunkGeneratorMain(void* ptr)
 			neighborFlags[4] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Forward, job.chunk->lod);
 			neighborFlags[5] = GetChunkFlagsAtGridPosition(job.chunk->gridPosition + ivec3::Back, job.chunk->lod);
 
-			ChunkMesherRun(&data->game->chunkMesher, data, job.chunk, neighbors, neighborFlags, cmdBuffer);
+			ChunkMesherRun(&data->game->chunkMesher, data, job.chunk, neighbors, neighborFlags, readbackData->transferBuffer, cmdBuffer);
 
-			SDL_SubmitGPUCommandBuffer(cmdBuffer);
+			readbackData->fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
+			job.chunk->readbackData = readbackData;
 		}
 		else
 		{
 			SDL_UnlockMutex(game->chunkJobMutex);
 			SDL_UnlockMutex(game->chunkMeshingMutex);
+			SDL_UnlockMutex(game->chunkReadbackMutex);
 			//SDL_DelayPrecise(1000);
 		}
 
@@ -419,8 +468,11 @@ void GameInit()
 
 	InitQueue(&game->chunkJobQueue);
 	InitQueue(&game->chunkMeshingQueue);
+	InitPool(&game->chunkReadbackPool);
+
 	game->chunkJobMutex = SDL_CreateMutex();
 	game->chunkMeshingMutex = SDL_CreateMutex();
+	game->chunkReadbackMutex = SDL_CreateMutex();
 
 	for (int i = 0; i < NUM_CHUNK_GENERATOR_THREADS; i++)
 	{
@@ -429,6 +481,17 @@ void GameInit()
 		char name[32];
 		SDL_snprintf(name, 32, "Chunk Generator %d", i);
 		game->chunkGenerators[i] = SDL_CreateThread(ChunkGeneratorMain, name, &game->chunkGeneratorsData[i]);
+	}
+
+	for (int i = 0; i < game->chunkReadbackPool.capacity; i++)
+	{
+		ChunkReadbackData* readbackData = &game->chunkReadbackPool.data[i];
+		readbackData->fence = nullptr;
+
+		SDL_GPUTransferBufferCreateInfo transferInfo = {};
+		transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
+		transferInfo.size = sizeof(SDL_GPUIndirectDrawCommand) + sizeof(uint32_t);
+		readbackData->transferBuffer = SDL_CreateGPUTransferBuffer(device, &transferInfo);
 	}
 
 	game->cameraPosition = vec3(0, 16, 32);
@@ -497,6 +560,8 @@ static void QueueChunkGenerator(Chunk* chunk)
 {
 	ChunkJob job = {};
 	job.chunk = chunk;
+	job.gridPosition = chunk->gridPosition;
+	job.lod = chunk->lod;
 
 	SDL_LockMutex(game->chunkJobMutex);
 	QueuePush(&game->chunkJobQueue, job);
@@ -523,6 +588,8 @@ static void QueueChunkMesher(Chunk* chunk)
 {
 	ChunkJob job = {};
 	job.chunk = chunk;
+	job.gridPosition = chunk->gridPosition;
+	job.lod = chunk->lod;
 
 	SDL_LockMutex(game->chunkMeshingMutex);
 	QueuePush(&game->chunkMeshingQueue, job);
@@ -578,15 +645,44 @@ static void UpdateChunkVisiblity()
 		Chunk* chunk = &game->chunks[i];
 		if (chunk->isActive && chunk->isLoaded)
 		{
-			/*
-			if (chunk->isEmpty)
+			if (chunk->readbackData)
+			{
+				if (SDL_QueryGPUFence(device, chunk->readbackData->fence))
+				{
+					void* mappedBuffer = SDL_MapGPUTransferBuffer(device, chunk->readbackData->transferBuffer, false);
+					SDL_GPUIndirectDrawCommand* drawCmd = (SDL_GPUIndirectDrawCommand*)mappedBuffer;
+					uint32_t* blockCounter = (uint32_t*)(drawCmd + 1);
+					chunk->vertexCount = drawCmd->num_instances;
+					chunk->blockCount = (int)*blockCounter;
+					SDL_UnmapGPUTransferBuffer(device, chunk->readbackData->transferBuffer);
+
+					SDL_ReleaseGPUFence(device, chunk->readbackData->fence);
+					chunk->readbackData->fence = nullptr;
+
+					SDL_LockMutex(game->chunkReadbackMutex);
+					PoolRelease(&game->chunkReadbackPool, chunk->readbackData);
+					SDL_UnlockMutex(game->chunkReadbackMutex);
+					chunk->readbackData = nullptr;
+				}
+			}
+
+			if (chunk->vertexCount == 0)
 			{
 				int lod = chunk->lod;
 				int gridIdx = GetChunkGridIdxFromGridPosition(chunk->gridPosition);
 				SDL_assert(gridIdx != -1);
+
+				if (chunk->blockCount == 0)
+					game->lods[lod].chunkFlags[gridIdx] |= CHUNK_FLAG_EMPTY;
+				else
+				{
+					SDL_assert(chunk->blockCount == CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE);
+					game->lods[lod].chunkFlags[gridIdx] |= CHUNK_FLAG_SOLID;
+				}
+
 				UnloadChunk(chunk);
-				game->lods[lod].chunkFlags[gridIdx] |= CHUNK_FLAG_EMPTY;
 			}
+			/*
 			else if (chunk->hasMesh && !chunk->needsMeshUpdate && chunk->getTotalVertexCount() == 0 || chunk->isEmpty)
 			{
 				int lod = chunk->lod;
@@ -594,9 +690,8 @@ static void UpdateChunkVisiblity()
 				UnloadChunk(chunk);
 				game->lods[lod].chunkFlags[gridIdx] |= CHUNK_FLAG_SOLID;
 			}
-			else
 			*/
-			if (chunk->needsMeshUpdate)
+			else if (chunk->needsMeshUpdate)
 			{
 				// only remesh
 				if (!HasChunkMesherForChunk(chunk) && ChunkMesherAvailable())
@@ -692,7 +787,7 @@ void GameUpdate()
 		// regenerate chunks
 		for (int i = 0; i < MAX_LOADED_CHUNKS; i++)
 		{
-			if (game->chunks[i].isLoaded)
+			if (game->chunks[i].isActive)
 				UnloadChunk(&game->chunks[i]);
 		}
 	}
@@ -701,7 +796,7 @@ void GameUpdate()
 		// regenerate chunks
 		for (int i = 0; i < MAX_LOADED_CHUNKS; i++)
 		{
-			if (game->chunks[i].isLoaded)
+			if (game->chunks[i].isActive)
 				game->chunks[i].needsMeshUpdate = true;
 		}
 	}

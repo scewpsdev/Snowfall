@@ -7,6 +7,7 @@
 layout(local_size_x = 1, local_size_y = 1, local_size_z = CHUNK_SIZE) in; // 8*8*8 = 512 threads
 
 layout(std430, set = 0, binding = 0) readonly buffer MaskData {
+	uint blockCounter;
 	uint faceMasks[];
 };
 

@@ -31,6 +31,7 @@
 
 #include "utils/BumpAllocator.h"
 #include "utils/Queue.h"
+#include "utils/Pool.h"
 
 
 #define PROJECT_PATH "D:\\Dev\\Snowfall\\Snowfall"
@@ -98,7 +99,7 @@ struct GraphicsState
 
 struct ChunkLODLevel
 {
-#define CHUNK_LOD_DISTANCE 16
+#define CHUNK_LOD_DISTANCE 4
 	Chunk* chunkGrid[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
 #define CHUNK_FLAG_EMPTY (1 << 0)
 #define CHUNK_FLAG_SOLID (1 << 1)
@@ -107,7 +108,10 @@ struct ChunkLODLevel
 
 struct ChunkJob
 {
+// TODO maybe store grid position instead of pointer? since chunks can be unloaded and reused while this is queued.
 	Chunk* chunk;
+	ivec3 gridPosition;
+	int lod;
 };
 
 struct ChunkGeneratorThreadData
@@ -124,7 +128,12 @@ struct ChunkGeneratorThreadData
 
 	TransferBuffer* chunkStorageTransferBuffer;
 	TransferBuffer* chunkIndirectTransferBuffer;
-	TransferBuffer* chunkReadbackTransferBuffer;
+};
+
+struct ChunkReadbackData
+{
+	SDL_GPUFence* fence;
+	SDL_GPUTransferBuffer* transferBuffer;
 };
 
 struct GameState
@@ -151,6 +160,8 @@ struct GameState
 	SDL_Mutex* chunkJobMutex;
 	Queue<ChunkJob, 8> chunkMeshingQueue;
 	SDL_Mutex* chunkMeshingMutex;
+	Pool<ChunkReadbackData, 64> chunkReadbackPool;
+	SDL_Mutex* chunkReadbackMutex;
 
 	WorldGenerator worldGenerator;
 	ChunkMesher chunkMesher;
