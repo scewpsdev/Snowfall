@@ -640,7 +640,7 @@ static void UpdateChunkVisiblity()
 {
 	uint64_t before = SDL_GetTicksNS();
 
-	for (int i = 0; i < game->numLoadedChunks; i++)
+	for (int i = 0; i <= game->lastLoadedChunk; i++)
 	{
 		Chunk* chunk = &game->chunks[i];
 		if (chunk->isActive && chunk->isLoaded)

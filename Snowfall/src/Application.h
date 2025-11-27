@@ -97,15 +97,6 @@ struct GraphicsState
 	int numGraphicsPipelines;
 };
 
-struct ChunkLODLevel
-{
-#define CHUNK_LOD_DISTANCE 4
-	Chunk* chunkGrid[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
-#define CHUNK_FLAG_EMPTY (1 << 0)
-#define CHUNK_FLAG_SOLID (1 << 1)
-	uint8_t chunkFlags[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
-};
-
 struct ChunkJob
 {
 // TODO maybe store grid position instead of pointer? since chunks can be unloaded and reused while this is queued.
@@ -136,6 +127,15 @@ struct ChunkReadbackData
 	SDL_GPUTransferBuffer* transferBuffer;
 };
 
+struct ChunkLODLevel
+{
+#define CHUNK_LOD_DISTANCE 16
+	Chunk* chunkGrid[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
+#define CHUNK_FLAG_EMPTY (1 << 0)
+#define CHUNK_FLAG_SOLID (1 << 1)
+	uint8_t chunkFlags[CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE];
+};
+
 struct GameState
 {
 	Shader* chunkShader;
@@ -150,7 +150,7 @@ struct GameState
 	int numLoadedChunks;
 	int lastLoadedChunk;
 
-#define NUM_CHUNK_LOD_LEVELS 1
+#define NUM_CHUNK_LOD_LEVELS 6
 	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
 #define NUM_CHUNK_GENERATOR_THREADS 8

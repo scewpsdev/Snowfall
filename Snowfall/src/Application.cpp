@@ -26,7 +26,7 @@ SDL_GPUCommandBuffer* cmdBuffer = nullptr;
 #include "game/Game.cpp"
 
 
-extern "C" __declspec(dllexport) SDL_AppResult AppInit(GameMemory* memory, AppState* appState, int argc, char** argv)
+extern "C" __declspec(dllexport) SDL_AppResult AppInit(GameMemory * memory, AppState * appState, int argc, char** argv)
 {
 	::memory = memory;
 	app = (AppState*)memory->constantMemory;
@@ -66,7 +66,7 @@ void AppResize(int newWidth, int newHeight)
 	GameResize(newWidth, newHeight);
 }
 
-extern "C" __declspec(dllexport) void AppDestroy(GameMemory* memory, AppState* appState, SDL_AppResult result)
+extern "C" __declspec(dllexport) void AppDestroy(GameMemory * memory, AppState * appState, SDL_AppResult result)
 {
 	SDL_Log("Shutting down...");
 
@@ -80,7 +80,7 @@ extern "C" __declspec(dllexport) void AppDestroy(GameMemory* memory, AppState* a
 	GameDestroy();
 }
 
-extern "C" __declspec(dllexport) SDL_AppResult AppOnEvent(GameMemory* memory, AppState* appState, SDL_Event* event)
+extern "C" __declspec(dllexport) SDL_AppResult AppOnEvent(GameMemory * memory, AppState * appState, SDL_Event * event)
 {
 	if (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
 		return SDL_APP_SUCCESS;
@@ -92,7 +92,7 @@ extern "C" __declspec(dllexport) SDL_AppResult AppOnEvent(GameMemory* memory, Ap
 	return SDL_APP_CONTINUE;
 }
 
-extern "C" __declspec(dllexport) void AppIterate(GameMemory* memory, AppState* appState)
+extern "C" __declspec(dllexport) void AppIterate(GameMemory * memory, AppState * appState)
 {
 	::memory = memory;
 	app = (AppState*)memory->constantMemory;
@@ -121,6 +121,14 @@ extern "C" __declspec(dllexport) void AppIterate(GameMemory* memory, AppState* a
 
 		SDL_Log("%d fps, %.3f ms | %s, %s | chunks: %d, rendered: %d, vertices: %d", fps, avgMs, memoryUsageStr, transientMemoryUsageStr, game->numLoadedChunks, game->numRenderedChunks, game->numRenderedVertices);
 		SDL_Log("%d, %d, %d", (int)floorf(game->cameraPosition.x), (int)floorf(game->cameraPosition.y), (int)floorf(game->cameraPosition.z));
+
+		ivec3 gridPosition = ivec3(floor(game->cameraPosition / CHUNK_SIZE));
+		Chunk* chunk = GetChunkAtGridPosition(gridPosition, 0);
+		uint32_t chunkFlags = GetChunkFlagsAtGridPosition(gridPosition, 0);
+		if (chunk)
+			SDL_Log("chunk %d,%d,%d | blocks %d | vertices %d", gridPosition.x, gridPosition.y, gridPosition.z, chunk->blockCount, chunk->vertexCount);
+		else
+			SDL_Log("chunk %d,%d,%d not loaded | flags %d", gridPosition.x, gridPosition.y, gridPosition.z, chunkFlags);
 
 		memoryUsage = 0;
 		transientMemoryUsage = 0;

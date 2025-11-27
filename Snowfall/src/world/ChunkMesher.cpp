@@ -775,12 +775,12 @@ static void GenerateMeshDetectFaces(ChunkMesher* mesher, Chunk* chunk, Chunk** n
 	};
 	UniformData params = {};
 	params.chunkTextureOffset = chunk->getChunkTextureOffset();
-	params.neighbor0TextureOffset = neighborFlags[0] ? (neighborFlags[0] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[0] ? neighbors[0]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor1TextureOffset = neighborFlags[1] ? (neighborFlags[1] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[1] ? neighbors[1]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor2TextureOffset = neighborFlags[2] ? (neighborFlags[2] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[2] ? neighbors[2]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor3TextureOffset = neighborFlags[3] ? (neighborFlags[3] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[3] ? neighbors[3]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor4TextureOffset = neighborFlags[4] ? (neighborFlags[4] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[4] ? neighbors[4]->getChunkTextureOffset() : ivec3(-1);
-	params.neighbor5TextureOffset = neighborFlags[5] ? (neighborFlags[5] & CHUNK_FLAG_EMPTY ? ivec3(-1) : ivec3(-2)) : neighbors[5] ? neighbors[5]->getChunkTextureOffset() : ivec3(-1);
+	params.neighbor0TextureOffset = neighbors[0] ? neighbors[0]->getChunkTextureOffset() : neighborFlags[0] && neighborFlags[0] & CHUNK_FLAG_SOLID ? ivec3(-2) : ivec3(-1);
+	params.neighbor1TextureOffset = neighbors[1] ? neighbors[1]->getChunkTextureOffset() : neighborFlags[1] && neighborFlags[1] & CHUNK_FLAG_SOLID ? ivec3(-2) : ivec3(-1);
+	params.neighbor2TextureOffset = neighbors[2] ? neighbors[2]->getChunkTextureOffset() : neighborFlags[2] && neighborFlags[2] & CHUNK_FLAG_SOLID ? ivec3(-2) : ivec3(-1);
+	params.neighbor3TextureOffset = neighbors[3] ? neighbors[3]->getChunkTextureOffset() : neighborFlags[3] && neighborFlags[3] & CHUNK_FLAG_SOLID ? ivec3(-2) : ivec3(-1);
+	params.neighbor4TextureOffset = neighbors[4] ? neighbors[4]->getChunkTextureOffset() : neighborFlags[4] && neighborFlags[4] & CHUNK_FLAG_SOLID ? ivec3(-2) : ivec3(-1);
+	params.neighbor5TextureOffset = neighbors[5] ? neighbors[5]->getChunkTextureOffset() : neighborFlags[5] && neighborFlags[5] & CHUNK_FLAG_SOLID ? ivec3(-2) : ivec3(-1);
 	SDL_PushGPUComputeUniformData(cmdBuffer, 0, &params, sizeof(params));
 
 	SDL_DispatchGPUCompute(computePass, CHUNK_SIZE / 8, CHUNK_SIZE / 8, CHUNK_SIZE / 8);
