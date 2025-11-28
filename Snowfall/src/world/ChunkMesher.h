@@ -36,11 +36,10 @@ struct ChunkMesher
 
 #define CHUNK_MESHER_VERTEX_CAPACITY (CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 6 * 4 / 2)
 	uint32_t vertexData[CHUNK_MESHER_VERTEX_CAPACITY];
-	int numVertices;
 	//int vertexCapacity;
 
-	int vertexOffsets[6];
-	int vertexCounts[6];
+	int vertexCount;
+	int blockCount;
 
 	Shader* faceDetectShader;
 	Shader* vertexGenShader;
@@ -57,4 +56,5 @@ void InitChunkMesher(ChunkMesher* mesher);
 //void ChunkBuilderCreateBuffers(ChunkMesher* mesher, InstanceBuffer** instanceBuffer);
 //void ChunkBuilderCreateBuffers(ChunkMesher* mesher, VertexBuffer** vertexBuffer, IndexBuffer** indexBuffer);
 
-void ChunkMesherRun(ChunkMesher* mesher, struct ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUTransferBuffer* readbackBuffer, SDL_GPUCommandBuffer* cmdBuffer);
+void ChunkMesherRunGPU(ChunkMesher* mesher, struct ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUTransferBuffer* readbackBuffer, SDL_GPUCommandBuffer* cmdBuffer);
+void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUCommandBuffer* cmdBuffer);

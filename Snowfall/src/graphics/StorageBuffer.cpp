@@ -25,6 +25,7 @@ StorageBuffer* CreateStorageBuffer(const uint8_t* data, uint32_t size, SDL_GPUCo
 
 		void* mappedBuffer = SDL_MapGPUTransferBuffer(device, transferBuffer, false);
 		SDL_memcpy(mappedBuffer, data, size);
+		SDL_UnmapGPUTransferBuffer(device, transferBuffer);
 
 		SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
 
@@ -40,7 +41,6 @@ StorageBuffer* CreateStorageBuffer(const uint8_t* data, uint32_t size, SDL_GPUCo
 		SDL_UploadToGPUBuffer(copyPass, &location, &region, false);
 		SDL_EndGPUCopyPass(copyPass);
 
-		SDL_UnmapGPUTransferBuffer(device, transferBuffer);
 		SDL_ReleaseGPUTransferBuffer(device, transferBuffer);
 	}
 

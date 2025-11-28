@@ -99,7 +99,7 @@ struct GraphicsState
 
 struct ChunkJob
 {
-// TODO maybe store grid position instead of pointer? since chunks can be unloaded and reused while this is queued.
+	// TODO maybe store grid position instead of pointer? since chunks can be unloaded and reused while this is queued.
 	Chunk* chunk;
 	ivec3 gridPosition;
 	int lod;
@@ -108,17 +108,13 @@ struct ChunkJob
 struct ChunkGeneratorThreadData
 {
 	bool running;
-	SDL_Mutex* mutex;
 
 	struct GameState* game;
-	//ChunkMesher mesher;
+	ChunkMesher mesher;
 
 	SDL_GPUTexture* heightmap;
 	SDL_GPUBuffer* faceMaskBuffer;
 	SDL_GPUBuffer* claimedFaceBuffer;
-
-	TransferBuffer* chunkStorageTransferBuffer;
-	TransferBuffer* chunkIndirectTransferBuffer;
 };
 
 struct ChunkReadbackData
@@ -150,6 +146,13 @@ struct GameState
 	int numLoadedChunks;
 	int lastLoadedChunk;
 
+	bool gpuMeshing;
+
+	uint64_t chunkGenAcc;
+	int chunkGenCounter;
+	uint64_t chunkMeshAcc;
+	int chunkMeshCounter;
+
 #define NUM_CHUNK_LOD_LEVELS 6
 	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
@@ -164,14 +167,18 @@ struct GameState
 	SDL_Mutex* chunkReadbackMutex;
 
 	WorldGenerator worldGenerator;
-	ChunkMesher chunkMesher;
+	//ChunkMesher chunkMesher;
 
 	VertexBuffer* chunkVertexBuffer;
 	StorageBuffer* chunkStorageBuffer;
-	TransferBuffer* chunkStorageTransferBuffer;
 	IndirectBuffer* chunkIndirectBuffer;
 	SDL_GPUTexture* chunkTexture;
 	Texture* chunkPalette;
+	SDL_Mutex* chunkVertexBufferMutex;
+
+	TransferBuffer* chunkVertexTransferBuffer;
+	TransferBuffer* chunkStorageTransferBuffer;
+	TransferBuffer* chunkIndirectTransferBuffer;
 
 	SDL_GPUTexture* depthTexture;
 	RenderTarget* gbuffer;

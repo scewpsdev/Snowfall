@@ -60,7 +60,7 @@ void InitChunkMesher(ChunkMesher* mesher)
 	mesher->sampler = SDL_CreateGPUSampler(device, &samplerInfo);
 }
 
-static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirection, int colorID)
+static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirection, uint8_t blockID)
 {
 	uint32_t x = position.x;
 	uint32_t y = position.y;
@@ -69,7 +69,7 @@ static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirecti
 	SDL_assert(x < CHUNK_SIZE && y < CHUNK_SIZE && z < CHUNK_SIZE);
 	SDL_assert(sx > 0 && sx <= CHUNK_SIZE && sy > 0 && sy <= CHUNK_SIZE);
 	SDL_assert(faceDirection < 6);
-	SDL_assert(colorID >= 0 && colorID < 16);
+	SDL_assert(blockID > 0 && blockID <= 16);
 
 	uint32_t data = 0;
 	data |= x;
@@ -78,22 +78,18 @@ static uint32_t EncodeVertexData(ivec3 position, int sx, int sy, int faceDirecti
 	data |= ((sx - 1) << 15);
 	data |= ((sy - 1) << 20);
 	data |= (faceDirection << 25);
-	data |= (colorID << 28);
+	data |= ((blockID - 1) << 28);
 
 	return data;
 }
 
 static void ChunkBuilderAddFace(ChunkMesher* mesher, ivec3 position, int sx, int sy, int faceDirection, uint8_t blockType)
 {
-	SDL_assert(mesher->numVertices + 3 <= CHUNK_MESHER_VERTEX_CAPACITY);
+	SDL_assert(mesher->vertexCount < CHUNK_MESHER_VERTEX_CAPACITY);
 
-	int colorID = blockType - 1;
-	uint32_t data = EncodeVertexData(position /*+ vertices[faceDirection * 3 + i]*/, sx, sy, faceDirection, colorID);
+	uint32_t data = EncodeVertexData(position /*+ vertices[faceDirection * 3 + i]*/, sx, sy, faceDirection, blockType);
 
-	mesher->vertexData[mesher->numVertices + 0] = data;
-	mesher->vertexData[mesher->numVertices + 1] = data;
-	mesher->vertexData[mesher->numVertices + 2] = data;
-	mesher->numVertices += 3;
+	mesher->vertexData[mesher->vertexCount++] = data;
 }
 
 static void GetFaceSize(int x, int y, bool slice[CHUNK_SIZE * CHUNK_SIZE], int* sx, int* sy)
@@ -139,10 +135,9 @@ static void GetFaceSize(int x, int y, bool slice[CHUNK_SIZE * CHUNK_SIZE], int* 
 
 static uint32_t TrailingZeros(uint32_t value)
 {
-	//unsigned long result = 0;
-	//if (_BitScanForward(&result, value))
-	//	return result;
-	//return 32u;
+	unsigned long result;
+	if (!_BitScanForward(&result, value))
+		result = 32u;
 
 	// https://stackoverflow.com/questions/7812044/finding-trailing-0s-in-a-binary-number
 	unsigned int v = value;      // 32-bit word input to count zero bits on right
@@ -154,6 +149,9 @@ static uint32_t TrailingZeros(uint32_t value)
 	if (v & 0x0F0F0F0F) c -= 4;
 	if (v & 0x33333333) c -= 2;
 	if (v & 0x55555555) c -= 1;
+
+	SDL_assert(c == result);
+
 	return c;
 }
 
@@ -162,7 +160,7 @@ static uint32_t TrailingOnes(uint32_t value)
 	return TrailingZeros(~value);
 }
 
-static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* neighbors[6], uint32_t neighborFlags[6])
+static void GreedyMesh(ChunkMesher* mesher, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags)
 {
 	uint64_t* binaryGrid = mesher->binaryGrid;
 
@@ -193,6 +191,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 					binaryGrid[(y + 1) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
 					binaryGrid[(y + 1) * CHUNK_SIZE_P + (z + 1) + 1 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (x + 1);
 					binaryGrid[(z + 1) * CHUNK_SIZE_P + (x + 1) + 2 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (y + 1);
+					mesher->blockCount++;
 				}
 			}
 		}
@@ -202,7 +201,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 		for (int y = 0; y < CHUNK_SIZE; y++)
 		{
 			{
-				bool solid = neighborFlags[0] ? neighborFlags[0] & CHUNK_FLAG_SOLID : neighbors[0] && neighbors[0]->blocks[(CHUNK_SIZE - 1) + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				bool solid = neighbors[0] ? neighbors[0]->blocks[(CHUNK_SIZE - 1) + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id : neighborFlags[0] & CHUNK_FLAG_SOLID;
 				if (solid)
 				{
 					binaryGrid[(y + 1) * CHUNK_SIZE_P + 0 + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
@@ -211,7 +210,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				}
 			}
 			{
-				bool solid = neighborFlags[1] ? neighborFlags[1] & CHUNK_FLAG_SOLID : neighbors[1] && neighbors[1]->blocks[(0) + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				bool solid = neighbors[1] ? neighbors[1]->blocks[(0) + y * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id : neighborFlags[1] & CHUNK_FLAG_SOLID;
 				if (solid)
 				{
 					binaryGrid[(y + 1) * CHUNK_SIZE_P + (CHUNK_SIZE + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
@@ -226,7 +225,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 		for (int x = 0; x < CHUNK_SIZE; x++)
 		{
 			{
-				bool solid = neighborFlags[2] ? neighborFlags[2] & CHUNK_FLAG_SOLID : neighbors[2] && neighbors[2]->blocks[x + (CHUNK_SIZE - 1) * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				bool solid = neighbors[2] ? neighbors[2]->blocks[x + (CHUNK_SIZE - 1) * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id : neighborFlags[2] & CHUNK_FLAG_SOLID;
 				if (solid)
 				{
 					binaryGrid[(0) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
@@ -235,7 +234,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				}
 			}
 			{
-				bool solid = neighborFlags[3] ? neighborFlags[3] & CHUNK_FLAG_SOLID : neighbors[3] && neighbors[3]->blocks[x + (0) * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id;
+				bool solid = neighbors[3] ? neighbors[3]->blocks[x + (0) * CHUNK_SIZE + z * CHUNK_SIZE * CHUNK_SIZE].id : neighborFlags[3] & CHUNK_FLAG_SOLID;
 				if (solid)
 				{
 					binaryGrid[(CHUNK_SIZE + 1) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (z + 1);
@@ -250,7 +249,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 		for (int x = 0; x < CHUNK_SIZE; x++)
 		{
 			{
-				bool solid = neighborFlags[4] ? neighborFlags[4] & CHUNK_FLAG_SOLID : neighbors[4] && neighbors[4]->blocks[x + y * CHUNK_SIZE + (CHUNK_SIZE - 1) * CHUNK_SIZE * CHUNK_SIZE].id;
+				bool solid = neighbors[4] ? neighbors[4]->blocks[x + y * CHUNK_SIZE + (CHUNK_SIZE - 1) * CHUNK_SIZE * CHUNK_SIZE].id : neighborFlags[4] & CHUNK_FLAG_SOLID;
 				if (solid)
 				{
 					binaryGrid[(y + 1) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (0);
@@ -259,7 +258,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				}
 			}
 			{
-				bool solid = neighborFlags[5] ? neighborFlags[5] & CHUNK_FLAG_SOLID : neighbors[5] && neighbors[5]->blocks[x + y * CHUNK_SIZE + 0 * CHUNK_SIZE * CHUNK_SIZE].id;
+				bool solid = neighbors[5] ? neighbors[5]->blocks[x + y * CHUNK_SIZE + 0 * CHUNK_SIZE * CHUNK_SIZE].id : neighborFlags[5] & CHUNK_FLAG_SOLID;
 				if (solid)
 				{
 					binaryGrid[(y + 1) * CHUNK_SIZE_P + (x + 1) + 0 * CHUNK_SIZE_P * CHUNK_SIZE_P] |= 1ull << (CHUNK_SIZE + 1);
@@ -333,9 +332,10 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				{
 					int slice = TrailingZeros((uint32_t)column);
 
-					column &= ~(1 << slice);
-
 					const BlockData* block = chunk->getBlockData(slice, i, j);
+					SDL_assert(block->id);
+
+					column &= ~(1 << slice);
 
 					mesher->greedyPlanes[block->id].slicesZY[slice * CHUNK_SIZE + j] |= 1 << i;
 				}
@@ -350,9 +350,10 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				{
 					int slice = TrailingZeros((uint32_t)column);
 
-					column &= ~(1 << slice);
-
 					const BlockData* block = chunk->getBlockData(slice, i, j);
+					SDL_assert(block->id);
+
+					column &= ~(1 << slice);
 
 					mesher->greedyPlanes[block->id].slicesZY[CHUNK_SIZE * CHUNK_SIZE + slice * CHUNK_SIZE + j] |= 1 << i;
 				}
@@ -367,9 +368,10 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				{
 					int slice = TrailingZeros((uint32_t)column);
 
-					column &= ~(1 << slice);
-
 					const BlockData* block = chunk->getBlockData(j, slice, i);
+					SDL_assert(block->id);
+
+					column &= ~(1 << slice);
 
 					mesher->greedyPlanes[block->id].slicesXZ[slice * CHUNK_SIZE + j] |= 1 << i;
 				}
@@ -384,9 +386,10 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				{
 					int slice = TrailingZeros((uint32_t)column);
 
-					column &= ~(1 << slice);
-
 					const BlockData* block = chunk->getBlockData(j, slice, i);
+					SDL_assert(block->id);
+
+					column &= ~(1 << slice);
 
 					mesher->greedyPlanes[block->id].slicesXZ[slice * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE] |= 1 << i;
 				}
@@ -401,9 +404,10 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				{
 					int slice = TrailingZeros((uint32_t)column);
 
-					column &= ~(1 << slice);
-
 					const BlockData* block = chunk->getBlockData(j, i, slice);
+					SDL_assert(block->id);
+
+					column &= ~(1 << slice);
 
 					mesher->greedyPlanes[block->id].slicesXY[slice * CHUNK_SIZE + j] |= 1 << i;
 				}
@@ -418,9 +422,10 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 				{
 					int slice = TrailingZeros((uint32_t)column);
 
-					column &= ~(1 << slice);
-
 					const BlockData* block = chunk->getBlockData(j, i, slice);
+					SDL_assert(block->id);
+
+					column &= ~(1 << slice);
 
 					mesher->greedyPlanes[block->id].slicesXY[slice * CHUNK_SIZE + j + CHUNK_SIZE * CHUNK_SIZE] |= 1 << i;
 				}
@@ -429,7 +434,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 	}
 
 	// face generation
-	mesher->vertexOffsets[0] = mesher->numVertices;
+	//mesher->vertexOffsets[0] = mesher->numVertices;
 	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
 		auto slot = &mesher->greedyPlanes.slots[i];
@@ -477,9 +482,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 			}
 		}
 	}
-	mesher->vertexCounts[0] = mesher->numVertices - mesher->vertexOffsets[0];
+	//mesher->vertexCounts[0] = mesher->numVertices - mesher->vertexOffsets[0];
 
-	mesher->vertexOffsets[1] = mesher->numVertices;
+	//mesher->vertexOffsets[1] = mesher->numVertices;
 	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
 		auto slot = &mesher->greedyPlanes.slots[i];
@@ -527,9 +532,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 			}
 		}
 	}
-	mesher->vertexCounts[1] = mesher->numVertices - mesher->vertexOffsets[1];
+	//mesher->vertexCounts[1] = mesher->numVertices - mesher->vertexOffsets[1];
 
-	mesher->vertexOffsets[2] = mesher->numVertices;
+	//mesher->vertexOffsets[2] = mesher->numVertices;
 	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
 		auto slot = &mesher->greedyPlanes.slots[i];
@@ -577,9 +582,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 			}
 		}
 	}
-	mesher->vertexCounts[2] = mesher->numVertices - mesher->vertexOffsets[2];
+	//mesher->vertexCounts[2] = mesher->numVertices - mesher->vertexOffsets[2];
 
-	mesher->vertexOffsets[3] = mesher->numVertices;
+	//mesher->vertexOffsets[3] = mesher->numVertices;
 	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
 		auto slot = &mesher->greedyPlanes.slots[i];
@@ -627,9 +632,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 			}
 		}
 	}
-	mesher->vertexCounts[3] = mesher->numVertices - mesher->vertexOffsets[3];
+	//mesher->vertexCounts[3] = mesher->numVertices - mesher->vertexOffsets[3];
 
-	mesher->vertexOffsets[4] = mesher->numVertices;
+	//mesher->vertexOffsets[4] = mesher->numVertices;
 	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
 		auto slot = &mesher->greedyPlanes.slots[i];
@@ -677,9 +682,9 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 			}
 		}
 	}
-	mesher->vertexCounts[4] = mesher->numVertices - mesher->vertexOffsets[4];
+	//mesher->vertexCounts[4] = mesher->numVertices - mesher->vertexOffsets[4];
 
-	mesher->vertexOffsets[5] = mesher->numVertices;
+	//mesher->vertexOffsets[5] = mesher->numVertices;
 	for (int i = 0; i < mesher->greedyPlanes.capacity; i++)
 	{
 		auto slot = &mesher->greedyPlanes.slots[i];
@@ -727,7 +732,7 @@ static void GreedyMesh(ChunkMesher* mesher, const Chunk* chunk, const Chunk* nei
 			}
 		}
 	}
-	mesher->vertexCounts[5] = mesher->numVertices - mesher->vertexOffsets[5];
+	//mesher->vertexCounts[5] = mesher->numVertices - mesher->vertexOffsets[5];
 }
 
 static void GenerateMeshDetectFaces(ChunkMesher* mesher, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUTexture* voxelData, SDL_GPUBuffer* outputBuffer, SDL_GPUCommandBuffer* cmdBuffer)
@@ -888,7 +893,7 @@ static void GenerateMeshGenVertices(ChunkMesher* mesher, Chunk* chunk, SDL_GPUBu
 	SDL_EndGPUCopyPass(copyPass);
 }
 
-void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUTransferBuffer* readbackBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+void ChunkMesherRunGPU(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUTransferBuffer* readbackBuffer, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	SDL_assert(chunk->isActive);
 
@@ -902,7 +907,33 @@ void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, C
 	*/
 
 	GenerateMeshDetectFaces(mesher, chunk, neighbors, neighborFlags, threadData->game->chunkTexture, threadData->faceMaskBuffer, cmdBuffer);
-	GenerateMeshGenVertices(mesher, chunk, threadData->faceMaskBuffer, threadData->game->chunkVertexBuffer->buffer, threadData->claimedFaceBuffer, threadData->game->chunkIndirectBuffer->buffer, threadData->chunkIndirectTransferBuffer, readbackBuffer, cmdBuffer);
+	GenerateMeshGenVertices(mesher, chunk, threadData->faceMaskBuffer, threadData->game->chunkVertexBuffer->buffer, threadData->claimedFaceBuffer, threadData->game->chunkIndirectBuffer->buffer, threadData->game->chunkIndirectTransferBuffer, readbackBuffer, cmdBuffer);
+
+	uint64_t after = SDL_GetTicksNS();
+	//SDL_Log("meshing %d,%d,%d %.2f ms", chunk->gridPosition.x, chunk->gridPosition.y, chunk->gridPosition.z, (after - before) / 1e6f);
+}
+
+void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUCommandBuffer* cmdBuffer)
+{
+	SDL_assert(chunk->isActive);
+
+	uint64_t before = SDL_GetTicksNS();
+
+	mesher->vertexCount = 0;
+	mesher->blockCount = 0;
+	InitHashMap(&mesher->greedyPlanes);
+
+	GreedyMesh(mesher, chunk, neighbors, neighborFlags);
+
+	if (mesher->vertexCount > 0)
+	{
+		SDL_LockMutex(threadData->game->chunkVertexBufferMutex);
+		UpdateVertexBuffer(threadData->game->chunkVertexBuffer, chunk->getVertexBufferOffset() * sizeof(uint32_t), (uint8_t*)mesher->vertexData, mesher->vertexCount * sizeof(uint32_t), threadData->game->chunkVertexTransferBuffer->buffer, threadData->game->chunkVertexTransferBuffer->cycle, cmdBuffer);
+		SDL_UnlockMutex(threadData->game->chunkVertexBufferMutex);
+	}
+
+	chunk->blockCount = mesher->blockCount;
+	chunk->vertexCount = mesher->vertexCount;
 
 	uint64_t after = SDL_GetTicksNS();
 	//SDL_Log("meshing %d,%d,%d %.2f ms", chunk->gridPosition.x, chunk->gridPosition.y, chunk->gridPosition.z, (after - before) / 1e6f);

@@ -119,8 +119,11 @@ extern "C" __declspec(dllexport) void AppIterate(GameMemory * memory, AppState *
 		char transientMemoryUsageStr[16];
 		MemoryString(transientMemoryUsageStr, 16, transientMemoryUsage);
 
-		SDL_Log("%d fps, %.3f ms | %s, %s | chunks: %d, rendered: %d, vertices: %d", fps, avgMs, memoryUsageStr, transientMemoryUsageStr, game->numLoadedChunks, game->numRenderedChunks, game->numRenderedVertices);
-		SDL_Log("%d, %d, %d", (int)floorf(game->cameraPosition.x), (int)floorf(game->cameraPosition.y), (int)floorf(game->cameraPosition.z));
+		char systemMemoryUsageStr[16];
+		MemoryString(systemMemoryUsageStr, 16, (uint64_t)SDL_GetSystemRAM() * 1024 * 1024);
+
+		SDL_Log("%d fps, %.3f ms | %s, %s, %s | chunks: %d, rendered: %d, vertices: %d", fps, avgMs, memoryUsageStr, transientMemoryUsageStr, systemMemoryUsageStr, game->numLoadedChunks, game->numRenderedChunks, game->numRenderedVertices);
+		SDL_Log("worldgen %.4f ms, meshing %.4f ms", game->chunkGenAcc / 1e9f / game->chunkGenCounter, game->chunkMeshAcc / 1e9f / game->chunkMeshCounter);
 
 		ivec3 gridPosition = ivec3(floor(game->cameraPosition / CHUNK_SIZE));
 		Chunk* chunk = GetChunkAtGridPosition(gridPosition, 0);

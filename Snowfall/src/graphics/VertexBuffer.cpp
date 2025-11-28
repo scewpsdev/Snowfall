@@ -47,7 +47,7 @@ extern GraphicsState* graphics;
 VertexBuffer* CreateVertexBuffer(int numVertices, const VertexBufferLayout* layout, SDL_GPUBufferUsageFlags usageFlags, const uint8_t* data, uint32_t size, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	SDL_GPUBufferCreateInfo bufferInfo = {};
-	bufferInfo.size = size;
+	bufferInfo.size = numVertices * GetVertexPitch(layout);
 	bufferInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX | usageFlags;
 	SDL_GPUBuffer* buffer = SDL_CreateGPUBuffer(device, &bufferInfo);
 
@@ -58,7 +58,7 @@ VertexBuffer* CreateVertexBuffer(int numVertices, const VertexBufferLayout* layo
 		transferInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
 		SDL_GPUTransferBuffer* transferBuffer = SDL_CreateGPUTransferBuffer(device, &transferInfo);
 
-		SDL_assert(numVertices * GetVertexPitch(layout) == size);
+		SDL_assert(size <= bufferInfo.size);
 
 		void* vertexData = SDL_MapGPUTransferBuffer(device, transferBuffer, false);
 		SDL_memcpy(vertexData, data, size);
@@ -96,9 +96,11 @@ void DestroyVertexBuffer(VertexBuffer* vertexBuffer)
 	SDL_ReleaseGPUBuffer(device, vertexBuffer->buffer);
 }
 
-void UpdateVertexBuffer(VertexBuffer* vertexBuffer, uint32_t offset, uint8_t* data, uint32_t size, SDL_GPUTransferBuffer* transferBuffer, void* mappedTransferBuffer, SDL_GPUCommandBuffer* cmdBuffer)
+void UpdateVertexBuffer(VertexBuffer* vertexBuffer, uint32_t offset, uint8_t* data, uint32_t size, SDL_GPUTransferBuffer* transferBuffer, bool cycleTransferBuffer, SDL_GPUCommandBuffer* cmdBuffer)
 {
-	SDL_memcpy(mappedTransferBuffer, data, size);
+	void* mappedBuffer = SDL_MapGPUTransferBuffer(device, transferBuffer, cycleTransferBuffer);
+	SDL_memcpy(mappedBuffer, data, size);
+	SDL_UnmapGPUTransferBuffer(device, transferBuffer);
 
 	SDL_GPUCopyPass* copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
 
@@ -110,6 +112,8 @@ void UpdateVertexBuffer(VertexBuffer* vertexBuffer, uint32_t offset, uint8_t* da
 	region.buffer = vertexBuffer->buffer;
 	region.size = size;
 	region.offset = offset;
+
+	SDL_assert(offset + size <= vertexBuffer->numVertices * GetVertexPitch(&vertexBuffer->layout));
 
 	SDL_UploadToGPUBuffer(copyPass, &location, &region, false);
 	SDL_EndGPUCopyPass(copyPass);

@@ -179,11 +179,6 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	GenerateHeightmap(generator, chunk, threadData->heightmap, cmdBuffer);
 	GenerateDensity(generator, chunk, threadData->heightmap, threadData->game->chunkTexture, cmdBuffer);
 	
-	ChunkData chunkData = {};
-	chunkData.position = chunk->getWorldPosition();
-	chunkData.scale = chunk->chunkScale;
-	UpdateStorageBuffer(threadData->game->chunkStorageBuffer, chunk->getStorageBufferOffset(), (uint8_t*)&chunkData, sizeof(chunkData), threadData->chunkStorageTransferBuffer->buffer, threadData->chunkStorageTransferBuffer->cycle, cmdBuffer);
-
 	/*
 	SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
 
@@ -287,5 +282,5 @@ void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadDa
 	uint64_t after = SDL_GetTicksNS();
 	//SDL_Log("worldgen %d,%d,%d %.2f ms", chunk->gridPosition.x, chunk->gridPosition.y, chunk->gridPosition.z, (after - before) / 1e6f);
 
-	chunk->needsMeshUpdate = true;
+	//chunk->needsMeshUpdate = true;
 }

@@ -34,7 +34,8 @@ struct ChunkData
 
 struct Chunk
 {
-	BlockData* blocks; // unused until chunk data readback is implemented
+	//BlockData* blocks; // unused until chunk data readback is implemented
+	BlockData blocks[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE];
 
 	int id;
 	ivec3 gridPosition;
@@ -45,6 +46,7 @@ struct Chunk
 	bool isLoaded; // whether the block data has been loaded (can't be unloaded due to being empty before its been generated)
 	bool hasMesh; // whether the mesh has been generated. is still true even if no vertices were created
 	bool needsMeshUpdate;
+	bool remeshQueued;
 
 	struct ChunkReadbackData* readbackData;
 	int vertexCount;
