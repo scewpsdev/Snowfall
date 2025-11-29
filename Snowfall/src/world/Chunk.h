@@ -49,6 +49,8 @@ struct Chunk
 	bool remeshQueued;
 
 	struct ChunkReadbackData* readbackData;
+	int readbackDataIdx;
+
 	int vertexCount;
 	int blockCount;
 

@@ -170,15 +170,15 @@ static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUText
 	SDL_EndGPUComputePass(computePass);
 }
 
-void GenerateChunk(WorldGenerator* generator, ChunkGeneratorThreadData* threadData, Chunk* chunk, SDL_GPUCommandBuffer* cmdBuffer)
+void GenerateChunk(WorldGenerator* generator, Chunk* chunk, SDL_GPUTexture* heightmap, SDL_GPUTexture* chunkTexture, SDL_GPUCommandBuffer* cmdBuffer)
 {
 	uint64_t before = SDL_GetTicksNS();
 
 	//chunk->isEmpty = true;
 
-	GenerateHeightmap(generator, chunk, threadData->heightmap, cmdBuffer);
-	GenerateDensity(generator, chunk, threadData->heightmap, threadData->game->chunkTexture, cmdBuffer);
-	
+	GenerateHeightmap(generator, chunk, heightmap, cmdBuffer);
+	GenerateDensity(generator, chunk, heightmap, chunkTexture, cmdBuffer);
+
 	/*
 	SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
 

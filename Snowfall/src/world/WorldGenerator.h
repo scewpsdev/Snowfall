@@ -24,4 +24,4 @@ struct WorldGenerator
 
 void InitWorldGenerator(WorldGenerator* generator);
 
-void GenerateChunk(WorldGenerator* generator, struct ChunkGeneratorThreadData* threadData, Chunk* chunk, SDL_GPUCommandBuffer* cmdBuffer);
+void GenerateChunk(WorldGenerator* generator, Chunk* chunk, SDL_GPUTexture* heightmap, SDL_GPUTexture* chunkTexture, SDL_GPUCommandBuffer* cmdBuffer);

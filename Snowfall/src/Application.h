@@ -112,7 +112,8 @@ struct ChunkGeneratorThreadData
 	struct GameState* game;
 	ChunkMesher mesher;
 
-	SDL_GPUTexture* heightmap;
+#define CHUNK_BATCH_SIZE 8
+	SDL_GPUTexture* heightmaps[CHUNK_BATCH_SIZE];
 	SDL_GPUBuffer* faceMaskBuffer;
 	SDL_GPUBuffer* claimedFaceBuffer;
 };
@@ -121,6 +122,7 @@ struct ChunkReadbackData
 {
 	SDL_GPUFence* fence;
 	SDL_GPUTransferBuffer* transferBuffer;
+	int refCount;
 };
 
 struct ChunkLODLevel
@@ -156,14 +158,15 @@ struct GameState
 #define NUM_CHUNK_LOD_LEVELS 6
 	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
-#define NUM_CHUNK_GENERATOR_THREADS 16
-	SDL_Thread* chunkGenerators[NUM_CHUNK_GENERATOR_THREADS];
-	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
-	Queue<ChunkJob, 8> chunkJobQueue;
+#define NUM_CHUNK_THREADS 16
+	SDL_Thread* chunkGenerators[NUM_CHUNK_THREADS];
+	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_THREADS];
+#define CHUNK_QUEUE_SIZE 8
+	Queue<ChunkJob, CHUNK_QUEUE_SIZE> chunkJobQueue;
 	SDL_Mutex* chunkJobMutex;
-	Queue<ChunkJob, 8> chunkMeshingQueue;
+	Queue<ChunkJob, CHUNK_QUEUE_SIZE> chunkMeshingQueue;
 	SDL_Mutex* chunkMeshingMutex;
-	Queue<ChunkJob, 8> chunkRemeshingQueue;
+	Queue<ChunkJob, CHUNK_QUEUE_SIZE> chunkRemeshingQueue;
 	SDL_Mutex* chunkRemeshingMutex;
 	Pool<ChunkReadbackData, 64> chunkReadbackPool;
 	SDL_Mutex* chunkReadbackMutex;

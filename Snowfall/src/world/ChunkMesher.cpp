@@ -913,7 +913,7 @@ void ChunkMesherRunGPU(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData
 	//SDL_Log("meshing %d,%d,%d %.2f ms", chunk->gridPosition.x, chunk->gridPosition.y, chunk->gridPosition.z, (after - before) / 1e6f);
 }
 
-void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags, SDL_GPUCommandBuffer* cmdBuffer)
+void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, Chunk* chunk, Chunk** neighbors, uint32_t* neighborFlags)
 {
 	SDL_assert(chunk->isActive);
 
@@ -924,13 +924,6 @@ void ChunkMesherRun(ChunkMesher* mesher, ChunkGeneratorThreadData* threadData, C
 	InitHashMap(&mesher->greedyPlanes);
 
 	GreedyMesh(mesher, chunk, neighbors, neighborFlags);
-
-	if (mesher->vertexCount > 0)
-	{
-		SDL_LockMutex(threadData->game->chunkVertexBufferMutex);
-		UpdateVertexBuffer(threadData->game->chunkVertexBuffer, chunk->getVertexBufferOffset() * sizeof(uint32_t), (uint8_t*)mesher->vertexData, mesher->vertexCount * sizeof(uint32_t), threadData->game->chunkVertexTransferBuffer->buffer, threadData->game->chunkVertexTransferBuffer->cycle, cmdBuffer);
-		SDL_UnlockMutex(threadData->game->chunkVertexBufferMutex);
-	}
 
 	chunk->blockCount = mesher->blockCount;
 	chunk->vertexCount = mesher->vertexCount;
