@@ -163,6 +163,8 @@ struct GameState
 	SDL_Mutex* chunkJobMutex;
 	Queue<ChunkJob, 8> chunkMeshingQueue;
 	SDL_Mutex* chunkMeshingMutex;
+	Queue<ChunkJob, 8> chunkRemeshingQueue;
+	SDL_Mutex* chunkRemeshingMutex;
 	Pool<ChunkReadbackData, 64> chunkReadbackPool;
 	SDL_Mutex* chunkReadbackMutex;
 
