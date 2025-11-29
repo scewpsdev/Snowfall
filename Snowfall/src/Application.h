@@ -156,7 +156,7 @@ struct GameState
 #define NUM_CHUNK_LOD_LEVELS 6
 	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
-#define NUM_CHUNK_GENERATOR_THREADS 8
+#define NUM_CHUNK_GENERATOR_THREADS 16
 	SDL_Thread* chunkGenerators[NUM_CHUNK_GENERATOR_THREADS];
 	ChunkGeneratorThreadData chunkGeneratorsData[NUM_CHUNK_GENERATOR_THREADS];
 	Queue<ChunkJob, 8> chunkJobQueue;

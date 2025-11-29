@@ -1,11 +1,13 @@
+#include <Windows.h>
+#undef min
+#undef max
+
 #include <SDL3/SDL.h>
 
 #include "Application.h"
 
 #include "utils/BumpAllocator.h"
 
-
-#define GAME_CODE_DLL "Snowfall.dll"
 
 #define Kilobytes(x) ((x) * 1024LL)
 #define Megabytes(x) (Kilobytes(x) * 1024LL)
@@ -19,9 +21,26 @@ extern "C" __declspec(dllexport) SDL_AppResult AppOnEvent(GameMemory * memory, A
 extern "C" __declspec(dllexport) void AppIterate(GameMemory * memory, AppState * appState);
 
 
+SDL_Time GetWriteTime(const char* path)
+{
+	SDL_PathInfo pathInfo = {};
+	if (SDL_GetPathInfo(path, &pathInfo))
+		return pathInfo.modify_time;
+	else
+	{
+		SDL_LogError(SDL_LOG_CATEGORY_SYSTEM, "%s", SDL_GetError());
+		return 0;
+	}
+}
+
+static void CompileResources()
+{
+	system("D:\\Dev\\Rainfall\\RainfallResourceCompiler\\bin\\x64\\Release\\RainfallResourceCompiler.exe " PROJECT_PATH "\\res res png ogg vsh fsh csh glsl vert frag comp ttf rfs gltf");
+}
+
 static void InitPlatformCallbacks(PlatformCallbacks* callbacks)
 {
-	callbacks->compileResources = nullptr;
+	callbacks->compileResources = CompileResources;
 }
 
 int main(int argc, char** argv)
@@ -30,10 +49,9 @@ int main(int argc, char** argv)
 	memory.constantMemorySize = Gigabytes(2);
 	memory.transientMemorySize = Megabytes(256);
 
+	void* baseAddress = (void*)Terabytes(2);
 	uint64_t totalSize = memory.constantMemorySize + memory.transientMemorySize;
-	memory.constantMemory = (uint8_t*)SDL_malloc(totalSize);
-	SDL_memset(memory.constantMemory, 0, totalSize);
-
+	memory.constantMemory = (uint8_t*)VirtualAlloc(baseAddress, totalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	memory.transientMemory = memory.constantMemory + memory.constantMemorySize;
 
 	InitBumpAllocator(&memory.constantAllocator, memory.constantMemory, memory.constantMemorySize);
@@ -61,7 +79,12 @@ int main(int argc, char** argv)
 	}
 	SDL_Log("Display %dx%d", width, height);
 
-	SDL_GPUDevice* device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, nullptr);
+	bool gpuDebug = false;
+#if _DEBUG
+	gpuDebug = true;
+#endif
+
+	SDL_GPUDevice* device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, gpuDebug, nullptr);
 	if (!device)
 	{
 		SDL_LogCritical(SDL_LOG_CATEGORY_GPU, "Failed to create graphics device: %s", SDL_GetError());
@@ -84,6 +107,8 @@ int main(int argc, char** argv)
 
 	appState->window = window;
 	appState->device = device;
+
+	SDL_Log("Loading game code\n");
 
 	SDL_AppResult result = AppInit(&memory, appState, argc, argv);
 
@@ -117,7 +142,7 @@ int main(int argc, char** argv)
 
 	AppDestroy(&memory, appState, result);
 
-	SDL_free(memory.constantMemory);
+	VirtualFree(memory.constantMemory, 0, MEM_RELEASE);
 
 	SDL_DestroyGPUDevice(device);
 	SDL_DestroyWindow(window);

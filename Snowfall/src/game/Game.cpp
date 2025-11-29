@@ -75,6 +75,16 @@ uint8_t GetChunkFlagsAtGridPosition(ivec3 position, int lod)
 	return CHUNK_FLAG_SOLID;
 }
 
+static void GetChunkNeighbors(Chunk* chunk, Chunk* neighbors[6])
+{
+	neighbors[0] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Left, chunk->lod);
+	neighbors[1] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Right, chunk->lod);
+	neighbors[2] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Down, chunk->lod);
+	neighbors[3] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Up, chunk->lod);
+	neighbors[4] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Forward, chunk->lod);
+	neighbors[5] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Back, chunk->lod);
+}
+
 static void GetChunkNeighbors(Chunk* chunk, Chunk* neighbors[6], uint32_t neighborFlags[6])
 {
 	neighbors[0] = GetChunkAtGridPosition(chunk->gridPosition + ivec3::Left, chunk->lod);
@@ -186,7 +196,7 @@ static void UnloadChunk(Chunk* chunk)
 // [X] fix chunk generation framerate drops
 // [X] separate generation and meshing
 // [X] cull chunk sides
-// [ ] unload empty chunks
+// [X] unload empty chunks
 // [ ] gpu culling pass (compact indirect buffer, frustum culling, sort front to back, remove invisible faces)
 // [ ] read block type from texture in chunk fragment shader
 // [ ] add back block types
@@ -243,6 +253,10 @@ static int ChunkGeneratorMain(void* ptr)
 			}
 			*/
 
+			// TODO
+			// do all worldgen readbacks at once
+			// do all meshing uploads at once
+
 			ChunkReadbackData* readbackData = PoolAlloc(&game->chunkReadbackPool);
 
 			SDL_UnlockMutex(game->chunkJobMutex);
@@ -287,21 +301,30 @@ static int ChunkGeneratorMain(void* ptr)
 				SDL_EndGPUCopyPass(copyPass);
 
 				SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
-				SDL_WaitForGPUFences(device, true, &fence, 1);
+				//SDL_WaitForGPUFences(device, true, &fence, 1);
+				//SDL_ReleaseGPUFence(device, fence);
 
-				void* mappedBuffer = SDL_MapGPUTransferBuffer(device, readbackData->transferBuffer, false);
-				SDL_memcpy(job.chunk->blocks, mappedBuffer, CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint8_t));
-				SDL_UnmapGPUTransferBuffer(device, readbackData->transferBuffer);
+				//void* mappedBuffer = SDL_MapGPUTransferBuffer(device, readbackData->transferBuffer, false);
+				//SDL_memcpy(job.chunk->blocks, mappedBuffer, CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint8_t));
+				//SDL_UnmapGPUTransferBuffer(device, readbackData->transferBuffer);
 
-				SDL_LockMutex(game->chunkReadbackMutex);
-				PoolRelease(&game->chunkReadbackPool, readbackData);
-				SDL_UnlockMutex(game->chunkReadbackMutex);
+				readbackData->fence = fence;
+				job.chunk->readbackData = readbackData;
+
+				//SDL_LockMutex(game->chunkReadbackMutex);
+				//PoolRelease(&game->chunkReadbackPool, readbackData);
+				//SDL_UnlockMutex(game->chunkReadbackMutex);
 			}
+
+			job.chunk->isLoaded = true;
+			job.chunk->needsMeshUpdate = true;
+			job.chunk->remeshQueued = false;
 
 			uint64_t afterGen = SDL_GetTicksNS();
 			game->chunkGenAcc += afterGen - beforeGen;
 			game->chunkGenCounter++;
 
+			/*
 			uint64_t beforeMesh = SDL_GetTicksNS();
 
 			if (game->gpuMeshing)
@@ -315,7 +338,6 @@ static int ChunkGeneratorMain(void* ptr)
 				readbackData->fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
 				job.chunk->readbackData = readbackData;
 
-				job.chunk->isLoaded = true;
 				job.chunk->hasMesh = true;
 
 				for (int i = 0; i < 6; i++)
@@ -337,9 +359,6 @@ static int ChunkGeneratorMain(void* ptr)
 				ChunkMesherRun(&data->mesher, data, job.chunk, neighborCopyPtrs, neighborFlags, cmdBuffer);
 				SDL_SubmitGPUCommandBuffer(cmdBuffer);
 
-				job.chunk->isLoaded = true;
-				job.chunk->hasMesh = true;
-
 				for (int i = 0; i < 6; i++)
 				{
 					if (neighbors[i])
@@ -352,6 +371,7 @@ static int ChunkGeneratorMain(void* ptr)
 			uint64_t afterMesh = SDL_GetTicksNS();
 			game->chunkMeshAcc += afterMesh - beforeMesh;
 			game->chunkMeshCounter++;
+			*/
 		}
 		else if (game->chunkMeshingQueue.size > 0 && game->chunkReadbackPool.freeHead != -1)
 		{
@@ -373,12 +393,10 @@ static int ChunkGeneratorMain(void* ptr)
 			}
 			*/
 
-			ChunkReadbackData* readbackData = PoolAlloc(&game->chunkReadbackPool);
+			//ChunkReadbackData* readbackData = PoolAlloc(&game->chunkReadbackPool);
 
 			SDL_UnlockMutex(game->chunkMeshingMutex);
 			SDL_UnlockMutex(game->chunkReadbackMutex);
-
-			SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
 
 			uint64_t beforeMesh = SDL_GetTicksNS();
 
@@ -388,16 +406,16 @@ static int ChunkGeneratorMain(void* ptr)
 				uint32_t neighborFlags[6];
 				GetChunkNeighbors(job.chunk, neighbors, neighborFlags);
 
-				ChunkMesherRunGPU(&data->mesher, data, job.chunk, neighbors, neighborFlags, readbackData->transferBuffer, cmdBuffer);
+				//ChunkMesherRunGPU(&data->mesher, data, job.chunk, neighbors, neighborFlags, readbackData->transferBuffer, cmdBuffer);
 
-				readbackData->fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
-				job.chunk->readbackData = readbackData;
+				//readbackData->fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmdBuffer);
+				//job.chunk->readbackData = readbackData;
 			}
 			else
 			{
-				SDL_LockMutex(game->chunkReadbackMutex);
-				PoolRelease(&game->chunkReadbackPool, readbackData);
-				SDL_UnlockMutex(game->chunkReadbackMutex);
+				//SDL_LockMutex(game->chunkReadbackMutex);
+				//PoolRelease(&game->chunkReadbackPool, readbackData);
+				//SDL_UnlockMutex(game->chunkReadbackMutex);
 
 				// we copy the neighbor chunk data here so the neighbors dont get unloaded while the chunk mesher is running.
 				// the current chunk is protected from this with the remeshQueued bool, but not the neighbors.
@@ -415,6 +433,8 @@ static int ChunkGeneratorMain(void* ptr)
 				SDL_GPUCommandBuffer* cmdBuffer = SDL_AcquireGPUCommandBuffer(device);
 				ChunkMesherRun(&data->mesher, data, job.chunk, neighborCopyPtrs, neighborFlags, cmdBuffer);
 				SDL_SubmitGPUCommandBuffer(cmdBuffer);
+
+				job.chunk->hasMesh = true;
 			}
 
 			job.chunk->remeshQueued = false;
@@ -769,14 +789,18 @@ static void UpdateChunkVisiblity()
 		{
 			if (chunk->readbackData)
 			{
-				SDL_assert(game->gpuMeshing);
+				//SDL_assert(game->gpuMeshing);
 				if (SDL_QueryGPUFence(device, chunk->readbackData->fence))
 				{
+					//void* mappedBuffer = SDL_MapGPUTransferBuffer(device, chunk->readbackData->transferBuffer, false);
+					//SDL_GPUIndirectDrawCommand* drawCmd = (SDL_GPUIndirectDrawCommand*)mappedBuffer;
+					//uint32_t* blockCounter = (uint32_t*)(drawCmd + 1);
+					//chunk->vertexCount = drawCmd->num_instances;
+					//chunk->blockCount = (int)*blockCounter;
+					//SDL_UnmapGPUTransferBuffer(device, chunk->readbackData->transferBuffer);
+
 					void* mappedBuffer = SDL_MapGPUTransferBuffer(device, chunk->readbackData->transferBuffer, false);
-					SDL_GPUIndirectDrawCommand* drawCmd = (SDL_GPUIndirectDrawCommand*)mappedBuffer;
-					uint32_t* blockCounter = (uint32_t*)(drawCmd + 1);
-					chunk->vertexCount = drawCmd->num_instances;
-					chunk->blockCount = (int)*blockCounter;
+					SDL_memcpy(chunk->blocks, mappedBuffer, CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * sizeof(uint8_t));
 					SDL_UnmapGPUTransferBuffer(device, chunk->readbackData->transferBuffer);
 
 					SDL_ReleaseGPUFence(device, chunk->readbackData->fence);
@@ -786,10 +810,18 @@ static void UpdateChunkVisiblity()
 					PoolRelease(&game->chunkReadbackPool, chunk->readbackData);
 					SDL_UnlockMutex(game->chunkReadbackMutex);
 					chunk->readbackData = nullptr;
+
+					Chunk* neighbors[6];
+					GetChunkNeighbors(chunk, neighbors);
+					for (int i = 0; i < 6; i++)
+					{
+						if (neighbors[i])
+							neighbors[i]->needsMeshUpdate = true;
+					}
 				}
 			}
 
-			if (chunk->vertexCount == 0 && !chunk->remeshQueued)
+			if (chunk->vertexCount == 0 && !chunk->remeshQueued && !chunk->readbackData)
 			{
 				int lod = chunk->lod;
 				int gridIdx = GetChunkGridIdxFromGridPosition(chunk->gridPosition);
@@ -817,7 +849,7 @@ static void UpdateChunkVisiblity()
 			else if (chunk->needsMeshUpdate)
 			{
 				// only remesh
-				if (!chunk->remeshQueued && ChunkMesherAvailable())
+				if (!chunk->remeshQueued && !chunk->readbackData && ChunkMesherAvailable())
 				{
 					SDL_assert(!HasChunkMesherForChunk(chunk) && !HasChunkGeneratorForGridPosition(chunk->gridPosition));
 					QueueChunkMesher(chunk);
@@ -837,31 +869,31 @@ static void UpdateChunkVisiblity()
 	for (int lod = 0; lod < NUM_CHUNK_LOD_LEVELS; lod++)
 	{
 		int chunkSize = CHUNK_SIZE * ipow(2, lod);
-		for (int z = -CHUNK_LOD_DISTANCE / 2; z < CHUNK_LOD_DISTANCE / 2; z++)
+		for (int d = lod > 0 ? CHUNK_LOD_DISTANCE / 4 + 1 : 1; d <= CHUNK_LOD_DISTANCE / 2; d++)
 		{
-			for (int y = -CHUNK_LOD_DISTANCE / 2; y < CHUNK_LOD_DISTANCE / 2; y++)
+			for (int z = -d; z < d; z++)
 			{
-				for (int x = -CHUNK_LOD_DISTANCE / 2; x < CHUNK_LOD_DISTANCE / 2; x++)
+				for (int y = -d; y < d; y++)
 				{
-					if (lod > 0 && (
-						x >= -CHUNK_LOD_DISTANCE / 4 && x < CHUNK_LOD_DISTANCE / 4 &&
-						y >= -CHUNK_LOD_DISTANCE / 4 && y < CHUNK_LOD_DISTANCE / 4 &&
-						z >= -CHUNK_LOD_DISTANCE / 4 && z < CHUNK_LOD_DISTANCE / 4
-						)) continue;
-
-					ivec3 gridPosition = ivec3(x, y, z);
-					int gridIdx = (x + CHUNK_LOD_DISTANCE / 2) + (y + CHUNK_LOD_DISTANCE / 2) * CHUNK_LOD_DISTANCE + (z + CHUNK_LOD_DISTANCE / 2) * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE;
-					Chunk* chunk = game->lods[lod].chunkGrid[gridIdx];
-					uint32_t flags = game->lods[lod].chunkFlags[gridIdx];
-					SDL_assert(!chunk || chunk->gridPosition == gridPosition && chunk->lod == lod);
-
-					if (!flags && !chunk && game->numLoadedChunks < MAX_LOADED_CHUNKS)
+					for (int x = -d; x < d; x++)
 					{
-						if (!HasChunkGeneratorForGridPosition(gridPosition) && ChunkGeneratorAvailable())
+						if (!(x == -d || x == d - 1 || y == -d || y == d - 1 || z == -d || z == d - 1))
+							continue;
+
+						ivec3 gridPosition = ivec3(x, y, z);
+						int gridIdx = (x + CHUNK_LOD_DISTANCE / 2) + (y + CHUNK_LOD_DISTANCE / 2) * CHUNK_LOD_DISTANCE + (z + CHUNK_LOD_DISTANCE / 2) * CHUNK_LOD_DISTANCE * CHUNK_LOD_DISTANCE;
+						Chunk* chunk = game->lods[lod].chunkGrid[gridIdx];
+						uint32_t flags = game->lods[lod].chunkFlags[gridIdx];
+						SDL_assert(!chunk || chunk->gridPosition == gridPosition && chunk->lod == lod);
+
+						if (!flags && !chunk && game->numLoadedChunks < MAX_LOADED_CHUNKS)
 						{
-							if (chunk = InitChunk(gridPosition, lod))
+							if (!HasChunkGeneratorForGridPosition(gridPosition) && ChunkGeneratorAvailable())
 							{
-								QueueChunkGenerator(chunk);
+								if (chunk = InitChunk(gridPosition, lod))
+								{
+									QueueChunkGenerator(chunk);
+								}
 							}
 						}
 					}
