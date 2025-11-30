@@ -898,9 +898,6 @@ static void UpdateChunkVisibility()
 	}
 }
 
-// TODO
-// break out of loop if no generator is available to avoid random chunks and keep prioritization
-// fix chunk batch meshing
 static void LoadNewChunks()
 {
 	for (int lod = 0; lod < NUM_CHUNK_LOD_LEVELS; lod++)
