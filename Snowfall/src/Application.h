@@ -155,7 +155,7 @@ struct GameState
 	uint64_t chunkMeshAcc;
 	int chunkMeshCounter;
 
-#define NUM_CHUNK_LOD_LEVELS 6
+#define NUM_CHUNK_LOD_LEVELS 10
 	ChunkLODLevel lods[NUM_CHUNK_LOD_LEVELS];
 
 #define NUM_CHUNK_THREADS 16

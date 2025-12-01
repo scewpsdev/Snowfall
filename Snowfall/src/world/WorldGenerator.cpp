@@ -116,7 +116,7 @@ static void GenerateHeightmap(WorldGenerator* generator, Chunk* chunk, SDL_GPUTe
 	UniformData params = {};
 	params.chunkPosition = chunk->getWorldPosition();
 	params.chunkScale = chunk->chunkScale;
-	params.baseFrequency = 1.0f / 512;
+	params.baseFrequency = 1.0f / 512 / 8;
 	params.frequencyMultiplier = 2.0f;
 	params.amplitudeMultiplier = 0.5f;
 	params.numOctaves = 5;
@@ -159,7 +159,7 @@ static void GenerateDensity(WorldGenerator* generator, Chunk* chunk, SDL_GPUText
 	params.chunkPosition = chunk->getWorldPosition();
 	params.chunkScale = chunk->chunkScale;
 	params.chunkTextureOffset = chunk->getChunkTextureOffset();
-	params.baseFrequency = 1.0f / 256;
+	params.baseFrequency = 1.0f / 256 / 8;
 	params.frequencyMultiplier = 2.0f;
 	params.amplitudeMultiplier = 0.5f;
 	params.numOctaves = 5;
